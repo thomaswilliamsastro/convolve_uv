@@ -38,6 +38,15 @@ dependencies = [
     "spectral-cube >= 0.6.7",
 ]
 
+# Optional packages for the test suite
+[project.optional-dependencies]
+test = [
+    "pytest-cov >= 7.1.0",
+]
+test-ruff = [
+    "ruff >= 0.15.10",
+]
+
 [project.urls]
 "Homepage" = "https://github.com/thomaswilliamsastro/convolve_uv"
 "Bug Reports" = "https://github.com/thomaswilliamsastro/convolve_uv/issues"

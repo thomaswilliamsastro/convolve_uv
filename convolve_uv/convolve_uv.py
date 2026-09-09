@@ -1,5 +1,3 @@
-import copy
-
 import astropy.units as u
 import numpy as np
 from astropy.convolution import convolve_fft, interpolate_replace_nans
@@ -8,6 +6,7 @@ from astropy.wcs.utils import proj_plane_pixel_scales
 from radio_beam import Beam
 from radio_beam.utils import BeamError
 from spectral_cube import Projection, SpectralCube, VaryingResolutionSpectralCube
+from spectral_cube.utils import NoBeamError
 
 FWHM_TO_SIGMA = 1.0 / np.sqrt(8.0 * np.log(2.0))
 
@@ -29,7 +28,9 @@ def beam_covariance_en(
     major_hat = np.array([np.sin(angle), np.cos(angle)])
     minor_hat = np.array([np.cos(angle), -np.sin(angle)])
 
-    cov = smaj**2 * np.outer(major_hat, major_hat) + smin**2 * np.outer(minor_hat, minor_hat)
+    cov = smaj**2 * np.outer(major_hat, major_hat) + smin**2 * np.outer(
+        minor_hat, minor_hat
+    )
 
     return cov
 
@@ -126,7 +127,7 @@ def do_convolution(
     image_slice: Projection,
     target_beam: Beam,
     boundary: str = "fill",
-    fill_value: float | int = 0.0,
+    fill_value: float = 0.0,
     pad_sigma: float = 8.0,
     nan_treatment: str = "interpolate",
     preserve_nan: bool = False,
@@ -140,7 +141,7 @@ def do_convolution(
         target_beam (Beam): The desired circular beam to convolve to.
         boundary (str, optional): ``"wrap"`` gives the exact periodic DFT solution. ``"fill"`` pads by
             ``fill_value`` for ``pad_sigma`` kernel sigmas before transforming to reduce wrapping.
-        fill_value (float|int, optional): The value to use outside the array when using boundary=``fill``.
+        fill_value (float, optional): The value to use outside the array when using boundary=``fill``.
             Defaults to 0.0
         pad_sigma (float, optional): Number of kernel sigmas to pad when using "pad" boundary. Defaults to 8.0.
         nan_treatment (str, optional): The method used to handle NaNs in the input slice:
@@ -161,10 +162,10 @@ def do_convolution(
     # Check beams are as we expect
     try:
         beam = image_slice.beam
-    except AttributeError:
+    except (AttributeError, NoBeamError):
         raise AttributeError("image_slice must have a valid beam")
 
-    if not isinstance(beam, Beam):
+    if not isinstance(target_beam, Beam):
         raise TypeError("Input beam must be a Beam object")
 
     # If the beams are identical, we just return the data
@@ -175,7 +176,9 @@ def do_convolution(
     try:
         kernel = target_beam.deconvolve(image_slice.beam)
     except BeamError:
-        raise ValueError("The target beam is smaller than the input beam, so cannot be deconvolved")
+        raise ValueError(
+            "The target beam is smaller than the input beam, so cannot be deconvolved"
+        )
 
     # Pull out the pixel scale, convert the kernel to an array
     pix_scale = proj_plane_pixel_scales(image_slice.wcs.celestial)[0] * u.deg
@@ -210,6 +213,10 @@ def do_convolution(
         pad_width = [(0, 0)] * (data.ndim - 2) + [(pad_y, pad_y), (pad_x, pad_x)]
         data = np.pad(data, pad_width, mode="constant", constant_values=fill_value)
         valid = np.pad(valid, pad_width, mode="constant", constant_values=False)
+    elif boundary == "wrap":
+        pass
+    else:
+        raise ValueError("boundary must be 'fill' or 'wrap'")
 
     transfer = transfer_function(data.shape, covariance)
     numerator = fft_filter(np.where(valid, data, 0.0), transfer)
@@ -252,7 +259,7 @@ def convolve_uv(
     image: Projection | SpectralCube | VaryingResolutionSpectralCube,
     target_beam: Beam,
     boundary: str = "fill",
-    fill_value: float | int = 0.0,
+    fill_value: float = 0.0,
     pad_sigma: float = 8.0,
     nan_treatment: str = "interpolate",
     preserve_nan: bool = False,
@@ -272,7 +279,7 @@ def convolve_uv(
         target_beam (Beam): The desired circular beam to convolve to.
         boundary (str, optional): ``"wrap"`` gives the exact periodic DFT solution. ``"fill"`` pads by
             ``fill_value`` for ``pad_sigma`` kernel sigmas before transforming to reduce wrapping.
-        fill_value (float|int, optional): The value to use outside the array when using boundary=``fill``.
+        fill_value (float, optional): The value to use outside the array when using boundary=``fill``.
             Defaults to 0.0
         pad_sigma (float, optional): Number of kernel sigmas to pad when using "pad" boundary. Defaults to 8.0.
         nan_treatment (str, optional): The method used to handle NaNs in the input slice:
@@ -293,12 +300,6 @@ def convolve_uv(
     # We need to keep everything in memory
     image.allow_huge_operations = True
 
-    if boundary not in ["fill", "wrap"]:
-        raise ValueError("boundary must be 'fill' or 'wrap'")
-
-    if nan_treatment not in ["interpolate", "fill"]:
-        raise ValueError("nan_treatment must be 'interpolate' or 'fill'")
-
     # If we're a cube, then we need to loop over each plane
     if not isinstance(image, Projection):
         n_chan = image.shape[0]
@@ -307,7 +308,7 @@ def convolve_uv(
 
         # To avoid adding in unnecessary slice info to the header,
         # take a copy of the cube
-        image_copy = copy.deepcopy(image)
+        image_copy = image._new_cube_with()
 
         with ProgressBar(n_chan) as bar:
             for chan in range(n_chan):

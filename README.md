@@ -1,8 +1,10 @@
 # convolve_uv
 
-[![](https://img.shields.io/pypi/v/convolve-uv.svg?label=PyPI&style=flat-square)](https://pypi.org/pypi/convolve-uv/)
-[![](https://img.shields.io/pypi/pyversions/convolve-uv.svg?label=Python&color=yellow&style=flat-square)](https://pypi.org/pypi/convolve-uv/)
-[![Actions](https://img.shields.io/github/actions/workflow/status/thomaswilliamsastro/convolve_uv/build.yml?branch=main&style=flat-square)](https://github.com/thomaswilliamsastro/convolve_uv/actions)
+[![PyPI](https://img.shields.io/pypi/v/convolve-uv.svg?label=PyPI&style=flat-square)](https://pypi.org/pypi/convolve-uv/)
+[![Python](https://img.shields.io/pypi/pyversions/convolve-uv.svg?label=Python&color=yellow&style=flat-square)](https://pypi.org/pypi/convolve-uv/)
+[![build](https://img.shields.io/github/actions/workflow/status/thomaswilliamsastro/convolve_uv/build.yml?branch=main&style=flat-square)](https://github.com/thomaswilliamsastro/convolve_uv/actions/workflows/build.yml)
+[![tests](https://img.shields.io/github/actions/workflow/status/thomaswilliamsastro/convolve_uv/tests.yml?branch=main&style=flat-square)](https://github.com/thomaswilliamsastro/convolve_uv/actions/workflows/tests.yml)
+[![codecov](https://img.shields.io/codecov/c/gh/thomaswilliamsastro/convolve_uv?style=flat-square)](https://codecov.io/gh/thomaswilliamsastro/convolve_uv)
 [![License](https://img.shields.io/badge/license-GNUv3-blue.svg?label=License&style=flat-square)](LICENSE)
 
 ```bash

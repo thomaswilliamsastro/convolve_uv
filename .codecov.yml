@@ -1,0 +1,11 @@
+# Don't fail if coverage drops slightly
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 0.1%
+
+# Setup layout for comments on pull requests
+comment:
+  layout: "header, diff"
