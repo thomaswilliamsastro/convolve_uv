@@ -1,0 +1,53 @@
+[project]
+
+name = "convolve_uv"
+version = "0.1.0"
+description = "Perform Gaussian convolution directly in the uv-plane"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {file = "LICENSE"}
+
+authors = [
+    {name = "Thomas Williams", email = "thomas.g.williams@manchester.ac.uk"},
+]
+maintainers = [
+    {name = "Thomas Williams", email = "thomas.g.williams@manchester.ac.uk"},
+]
+
+classifiers = [
+    #   3 - Alpha
+    #   4 - Beta
+    #   5 - Production/Stable
+    "Development Status :: 3 - Alpha",
+
+    # License
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
+]
+
+dependencies = [
+    "astropy >= 8.0.1",
+    "numpy >= 2.5.3",
+    "radio-beam >= 0.3.10",
+    "spectral-cube >= 0.6.7",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/thomaswilliamsastro/convolve_uv"
+"Bug Reports" = "https://github.com/thomaswilliamsastro/convolve_uv/issues"
+"Source" = "https://github.com/thomaswilliamsastro/convolve_uv"
+
+[build-system]
+requires = [
+    "setuptools == 80.9.0",
+    "wheel == 0.45.1",
+    "setuptools_scm == 9.2.2",
+]
+
+build-backend = "setuptools.build_meta"
