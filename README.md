@@ -1,7 +1,7 @@
 # convolve_uv
 
-[![](https://img.shields.io/pypi/v/convolve_uv.svg?label=PyPI&style=flat-square)](https://pypi.org/pypi/convolve_uv/)
-[![](https://img.shields.io/pypi/pyversions/convolve_uv.svg?label=Python&color=yellow&style=flat-square)](https://pypi.org/pypi/convolve_uv/)
+[![](https://img.shields.io/pypi/v/convolve-uv.svg?label=PyPI&style=flat-square)](https://pypi.org/pypi/convolve-uv/)
+[![](https://img.shields.io/pypi/pyversions/convolve-uv.svg?label=Python&color=yellow&style=flat-square)](https://pypi.org/pypi/convolve-uv/)
 [![Actions](https://img.shields.io/github/actions/workflow/status/thomaswilliamsastro/convolve_uv/build.yml?branch=main&style=flat-square)](https://github.com/thomaswilliamsastro/convolve_uv/actions)
 [![License](https://img.shields.io/badge/license-GNUv3-blue.svg?label=License&style=flat-square)](LICENSE)
 
