@@ -1,7 +1,7 @@
 [project]
 
 name = "convolve_uv"
-version = "0.1.1"
+version = "0.2.0"
 description = "Perform Gaussian convolution directly in the uv-plane"
 readme = "README.md"
 requires-python = ">=3.12"
