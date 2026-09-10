@@ -11,7 +11,7 @@ on:
       unlabeled,
     ]
     branches:
-      - master
+      - main
 
 jobs:
   Check-Changelog:
