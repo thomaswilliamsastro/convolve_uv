@@ -1,0 +1,19 @@
+extend = "pyproject.toml"
+
+extend-exclude = [
+    ".github",
+]
+
+line-length = 100
+
+target-version = "py314"
+
+[format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[lint.pydocstyle]
+convention = "numpy"
+
+[lint.per-file-ignores]
