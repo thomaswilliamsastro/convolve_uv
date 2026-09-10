@@ -139,19 +139,19 @@ def do_convolution(
             or a projection of a full 3D SpectralCube. If a full SpectralCube, then the cube should only
             have two dimensions
         target_beam (Beam): The desired circular beam to convolve to.
-        boundary (str, optional): ``"wrap"`` gives the exact periodic DFT solution. ``"fill"`` pads by
+        boundary (str, optional): ``wrap`` gives the exact periodic DFT solution. ``fill`` pads by
             ``fill_value`` for ``pad_sigma`` kernel sigmas before transforming to reduce wrapping.
-        fill_value (float, optional): The value to use outside the array when using boundary=``fill``.
-            Defaults to 0.0
-        pad_sigma (float, optional): Number of kernel sigmas to pad when using "pad" boundary. Defaults to 8.0.
+        fill_value (float, optional): The value to use outside the array when using ``boundary=fill`` .
+            Defaults to 0.0.
+        pad_sigma (float, optional): Number of kernel sigmas to pad when using ``boundary=pad``. Defaults to 8.0.
         nan_treatment (str, optional): The method used to handle NaNs in the input slice:
-            * 'interpolate': ``NaN`` values are replaced with interpolated
+
+            * ``interpolate`` (default): ``NaN`` values are replaced with interpolated
               values using the kernel as an interpolation function. Note that
               if the kernel has a sum equal to zero, NaN interpolation is not
               possible and will raise an exception.
-            * 'fill': ``NaN`` values are replaced by ``fill_value`` prior to
+            * ``fill``: ``NaN`` values are replaced by ``fill_value`` prior to
               convolution.
-            Defaults to "interpolate".
         preserve_nan (bool, optional): After performing convolution, should pixels that were originally NaN again
             become NaN? Defaults to False.
 
@@ -277,19 +277,19 @@ def convolve_uv(
         image (Projection | SpectralCube | VaryingResolutionSpectralCube): Either a full SpectralCube instance,
             or a projection of a full 3D SpectralCube.
         target_beam (Beam): The desired circular beam to convolve to.
-        boundary (str, optional): ``"wrap"`` gives the exact periodic DFT solution. ``"fill"`` pads by
+        boundary (str, optional): ``wrap`` gives the exact periodic DFT solution. ``fill`` pads by
             ``fill_value`` for ``pad_sigma`` kernel sigmas before transforming to reduce wrapping.
-        fill_value (float, optional): The value to use outside the array when using boundary=``fill``.
-            Defaults to 0.0
-        pad_sigma (float, optional): Number of kernel sigmas to pad when using "pad" boundary. Defaults to 8.0.
+        fill_value (float, optional): The value to use outside the array when using ``boundary=fill`` .
+            Defaults to 0.0.
+        pad_sigma (float, optional): Number of kernel sigmas to pad when using ``boundary=pad``. Defaults to 8.0.
         nan_treatment (str, optional): The method used to handle NaNs in the input slice:
-            * 'interpolate': ``NaN`` values are replaced with interpolated
+
+            * ``interpolate`` (default): ``NaN`` values are replaced with interpolated
               values using the kernel as an interpolation function. Note that
               if the kernel has a sum equal to zero, NaN interpolation is not
               possible and will raise an exception.
-            * 'fill': ``NaN`` values are replaced by ``fill_value`` prior to
+            * ``fill``: ``NaN`` values are replaced by ``fill_value`` prior to
               convolution.
-            Defaults to "interpolate".
         preserve_nan (bool, optional): After performing convolution, should pixels that were originally NaN again
             become NaN? Defaults to False.
 
