@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Exclude masked pixels from convolution weights and preserve input data types (#14).
 
+### Updated
+
+- Ignore tox-generated coverage and JUnit report files (#15).
+
 ## [0.3.0]
 
 ### Added
