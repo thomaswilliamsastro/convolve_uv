@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Exclude masked pixels from convolution weights and preserve input data types (#14).
+- Correct parameter documentation and make usage examples copy-pasteable (#16).
 
 ### Updated
 

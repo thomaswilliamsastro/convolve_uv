@@ -27,9 +27,8 @@ from spectral_cube import SpectralCube
 cube = SpectralCube.read("my_cube.fits")
 target_beam = Beam(major=0.86 * u.arcsec, minor=0.86 * u.arcsec, pa=0 * u.deg)
 
-cube_conv = convolve_uv(image=cube, 
-                        target_beam=target_beam,
-                        )
+cube_conv = convolve_uv(image=cube, target_beam=target_beam)
+cube_conv.write("my_convolved_cube.fits")
 ```
 
 For more details, read the [documentation](https://convolve-uv.readthedocs.io/en/latest/).
