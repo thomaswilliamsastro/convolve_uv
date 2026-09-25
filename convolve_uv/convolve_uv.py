@@ -149,7 +149,9 @@ def do_convolution(
             * ``interpolate`` (default): ``NaN`` values are replaced with interpolated
               values using the kernel as an interpolation function. Note that
               if the kernel has a sum equal to zero, NaN interpolation is not
-              possible and will raise an exception.
+              possible and will raise an exception. If the input and target beams
+              are identical, the data are returned unchanged because no
+              interpolation kernel is available.
             * ``fill``: ``NaN`` values are replaced by ``fill_value`` prior to
               convolution.
         preserve_nan (bool, optional): After performing convolution, should pixels that were originally NaN again
@@ -168,9 +170,20 @@ def do_convolution(
     if not isinstance(target_beam, Beam):
         raise TypeError("Input beam must be a Beam object")
 
-    # If the beams are identical, we just return the data
+    if boundary not in {"fill", "wrap"}:
+        raise ValueError("boundary must be 'fill' or 'wrap'")
+    if nan_treatment not in {"interpolate", "fill"}:
+        raise ValueError("nan_treatment must be 'interpolate' or 'fill'")
+
+    # A zero-width kernel cannot interpolate missing values, so preserve them.
     if beam == target_beam:
-        return image_slice
+        data = np.array(image_slice.unitless_filled_data[:], dtype=image_slice.dtype)
+        nan_mask = np.isnan(data)
+        if nan_treatment == "fill":
+            data = np.where(np.isfinite(data), data, fill_value)
+        if preserve_nan:
+            data[nan_mask] = np.nan
+        return np.asarray(data, dtype=image_slice.dtype)
 
     # Check the beams can be deconvolved
     try:
@@ -186,6 +199,10 @@ def do_convolution(
 
     covariance = kernel_covariance_pixels(image_slice, target_beam)
     data = image_slice.unitless_filled_data[:]
+    if image_slice.mask is None:
+        mask = np.ones(data.shape, dtype=bool)
+    else:
+        mask = image_slice.mask.include(data=data, wcs=image_slice.wcs)
 
     # Keep track of NaNs, in case we need to put them back in later
     nan_mask = np.isnan(data)
@@ -199,11 +216,9 @@ def do_convolution(
             kernel,
             convolve=convolve_fft,
         )
-    else:
-        raise ValueError("nan_treatment must be 'interpolate' or 'fill'")
 
     # Keep track of where pixels are valid
-    valid = np.isfinite(data)
+    valid = mask & np.isfinite(data)
 
     pad_y = pad_x = 0
     if boundary == "fill":
@@ -215,8 +230,6 @@ def do_convolution(
         valid = np.pad(valid, pad_width, mode="constant", constant_values=False)
     elif boundary == "wrap":
         pass
-    else:
-        raise ValueError("boundary must be 'fill' or 'wrap'")
 
     transfer = transfer_function(data.shape, covariance)
     numerator = fft_filter(np.where(valid, data, 0.0), transfer)
@@ -248,7 +261,6 @@ def do_convolution(
         beam_ratio_factor = 1.0
     cube_slice_conv *= beam_ratio_factor
 
-    # If the dtype has changed, then revert here
     if cube_slice_conv.dtype != image_slice.dtype:
         cube_slice_conv = cube_slice_conv.astype(image_slice.dtype)
 

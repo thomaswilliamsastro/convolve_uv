@@ -574,6 +574,69 @@ class TestConvolveUV:
             res, analytic_kernel
         ), "Convolved kernel does not match analytic kernel"
 
+    def test_same_beam_preserves_nan(self):
+        """Test an identical-beam operation preserves NaN values"""
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        data = cube.unmasked_data[:].value.copy()
+        data[0, 10, 10] = np.nan
+        cube = SpectralCube(
+            data=data,
+            wcs=cube.wcs,
+            beam=cube.beam,
+            allow_huge_operations=True,
+        )
+
+        cube_conv = convolve_uv(image=cube, target_beam=cube.beam)
+        res = cube_conv.unmasked_data[:].value
+
+        assert np.isnan(res[0, 10, 10])
+        assert np.allclose(res[0, :10, :], data[0, :10, :], equal_nan=True)
+
+    def test_convolve_masked_data(self):
+        """Test masked pixels are excluded from convolution weights"""
+
+        base_cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        data = np.ones(base_cube.shape, dtype=np.float32)
+        cube = SpectralCube(
+            data=data,
+            wcs=base_cube.wcs,
+            beam=base_cube.beam,
+            fill_value=1e6,
+            allow_huge_operations=True,
+        )
+        mask = np.ones(cube.shape, dtype=bool)
+        mask[:, :, 11:] = False
+        cube = cube.with_mask(mask)
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        cube_conv = convolve_uv(image=cube, target_beam=target_beam)
+        res = cube_conv.unmasked_data[:].value
+
+        assert np.allclose(res[:, :, :11], 1.0, atol=1e-5)
+        assert np.array_equal(cube_conv.mask.include(), mask)
+
+    @pytest.mark.parametrize("data_dtype", [np.int16, np.bool_])
+    def test_convolve_preserves_input_dtype(self, data_dtype: np.dtype):
+        """Test convolution preserves the dtype exposed by the cube slice"""
+
+        base_cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        data = np.zeros(base_cube.shape, dtype=data_dtype)
+        data[0, 10, 10] = 1
+        cube = SpectralCube(
+            data=data,
+            wcs=base_cube.wcs,
+            beam=base_cube.beam,
+            allow_huge_operations=True,
+        )
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+        expected_dtype = cube[0].dtype
+
+        cube_conv = convolve_uv(image=cube, target_beam=target_beam)
+        res = cube_conv.unmasked_data[:].value
+
+        assert res.dtype == np.dtype(expected_dtype)
+
     @pytest.mark.parametrize("data_dtype", [np.float32, np.float64])
     def test_convolve_slice_different_dtype(
         self,
