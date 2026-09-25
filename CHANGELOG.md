@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Exclude masked pixels from convolution weights and preserve input data types (#14).
 - Correct parameter documentation and make usage examples copy-pasteable (#16).
+- Restore `allow_huge_operations` after `convolve_uv` instead of permanently mutating caller state (#17).
 
 ### Updated
 
