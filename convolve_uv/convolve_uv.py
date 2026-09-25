@@ -315,59 +315,74 @@ def convolve_uv(
         Projection | SpectralCube: The convolved Projection or SpectralCube
     """
 
-    # We need to keep everything in memory
+    # We need to keep everything in memory while we work on the cube/projection.
+    # ``allow_huge_operations`` is a plain instance attribute on the caller-owned
+    # object, so temporarily flip it and restore whatever was there before
+    # (including its absence) once we're done, whether or not we succeed.
+    _huge_ops_sentinel = object()
+    _original_allow_huge_operations = getattr(
+        image, "allow_huge_operations", _huge_ops_sentinel
+    )
     image.allow_huge_operations = True
 
-    # If we're a cube, then we need to loop over each plane
-    if not isinstance(image, Projection):
-        n_chan = image.shape[0]
+    try:
+        # If we're a cube, then we need to loop over each plane
+        if not isinstance(image, Projection):
+            n_chan = image.shape[0]
 
-        data_conv = np.zeros(image.shape, dtype=image.unmasked_data[0, 0, 0].dtype)
-
-        # To avoid adding in unnecessary slice info to the header,
-        # take a copy of the cube
-        image_copy = image._new_cube_with()
-
-        with ProgressBar(n_chan) as bar:
-            for chan in range(n_chan):
-                data_conv[chan] = do_convolution(
-                    image_copy[chan],
-                    target_beam=target_beam,
-                    boundary=boundary,
-                    fill_value=fill_value,
-                    pad_sigma=pad_sigma,
-                    nan_treatment=nan_treatment,
-                    preserve_nan=preserve_nan,
-                )
-                bar.update()
-
-        # If we're a VaryingResolutionSpectralCube, then we need to return a SpectralCube with the new beam
-        if isinstance(image, VaryingResolutionSpectralCube):
-            image_conv = SpectralCube(
-                data=data_conv,
-                wcs=image.wcs,
-                mask=image.mask,
-                meta=image.meta,
-                fill_value=image.fill_value,
-                header=image.header,
-                beam=target_beam,
+            data_conv = np.zeros(
+                image.shape, dtype=image.unmasked_data[0, 0, 0].dtype
             )
 
+            # To avoid adding in unnecessary slice info to the header,
+            # take a copy of the cube
+            image_copy = image._new_cube_with()
+
+            with ProgressBar(n_chan) as bar:
+                for chan in range(n_chan):
+                    data_conv[chan] = do_convolution(
+                        image_copy[chan],
+                        target_beam=target_beam,
+                        boundary=boundary,
+                        fill_value=fill_value,
+                        pad_sigma=pad_sigma,
+                        nan_treatment=nan_treatment,
+                        preserve_nan=preserve_nan,
+                    )
+                    bar.update()
+
+            # If we're a VaryingResolutionSpectralCube, then we need to return a SpectralCube with the new beam
+            if isinstance(image, VaryingResolutionSpectralCube):
+                image_conv = SpectralCube(
+                    data=data_conv,
+                    wcs=image.wcs,
+                    mask=image.mask,
+                    meta=image.meta,
+                    fill_value=image.fill_value,
+                    header=image.header,
+                    beam=target_beam,
+                )
+
+            else:
+                image_conv = image._new_cube_with(data=data_conv, beam=target_beam)
+
         else:
-            image_conv = image._new_cube_with(data=data_conv, beam=target_beam)
+            slice_conv = do_convolution(
+                image,
+                target_beam=target_beam,
+                boundary=boundary,
+                fill_value=fill_value,
+                pad_sigma=pad_sigma,
+                nan_treatment=nan_treatment,
+                preserve_nan=preserve_nan,
+            )
 
-    else:
-        slice_conv = do_convolution(
-            image,
-            target_beam=target_beam,
-            boundary=boundary,
-            fill_value=fill_value,
-            pad_sigma=pad_sigma,
-            nan_treatment=nan_treatment,
-            preserve_nan=preserve_nan,
-        )
-
-        image_conv = image._new_projection_with(data=slice_conv, beam=target_beam)
+            image_conv = image._new_projection_with(data=slice_conv, beam=target_beam)
+    finally:
+        if _original_allow_huge_operations is _huge_ops_sentinel:
+            del image.allow_huge_operations
+        else:
+            image.allow_huge_operations = _original_allow_huge_operations
 
     # Since we've convolved to a beam, if there's still references to multibeam tables,
     # remove that

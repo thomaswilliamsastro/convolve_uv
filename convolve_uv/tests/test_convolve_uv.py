@@ -745,3 +745,55 @@ class TestConvolveUV:
         assert np.allclose(
             res, analytic_kernel
         ), "Convolved kernel does not match analytic kernel"
+
+    def test_convolve_cube_restores_allow_huge_operations(self):
+        """Test convolve_uv does not permanently mutate a cube's allow_huge_operations"""
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=2)
+        cube.allow_huge_operations = False
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        convolve_uv(image=cube, target_beam=target_beam)
+
+        assert cube.allow_huge_operations is False
+
+    def test_convolve_cube_restores_allow_huge_operations_on_error(self):
+        """Test convolve_uv restores allow_huge_operations even if it raises"""
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=2)
+        cube.allow_huge_operations = False
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        with pytest.raises(ValueError, match="boundary must be"):
+            convolve_uv(image=cube, target_beam=target_beam, boundary="invalid")
+
+        assert cube.allow_huge_operations is False
+
+    def test_convolve_projection_does_not_leak_allow_huge_operations(self):
+        """Test convolve_uv doesn't leave a new attribute on a Projection without one"""
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        image_slice = cube[0]
+        assert not hasattr(image_slice, "allow_huge_operations")
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        convolve_uv(image=image_slice, target_beam=target_beam)
+
+        assert not hasattr(image_slice, "allow_huge_operations")
+
+    def test_convolve_projection_restores_allow_huge_operations_on_error(self):
+        """Test convolve_uv restores a Projection's pre-existing allow_huge_operations on error"""
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        image_slice = cube[0]
+        image_slice.allow_huge_operations = False
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        with pytest.raises(ValueError, match="boundary must be"):
+            convolve_uv(
+                image=image_slice,
+                target_beam=target_beam,
+                boundary="invalid",
+            )
+
+        assert image_slice.allow_huge_operations is False
