@@ -6,7 +6,12 @@ from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 from spectral_cube import SpectralCube, VaryingResolutionSpectralCube
 
-from ..convolve_uv import convolve_uv, do_convolution
+from ..convolve_uv import (
+    convolve_uv,
+    do_convolution,
+    kernel_covariance_pixels,
+    nan_interpolation_kernel,
+)
 
 TEST_RESOLUTIONS = [
     None,
@@ -75,6 +80,64 @@ def _create_test_cube(
         data = data.astype(data_dtype)
 
     # Construct the SpectralCube
+    cube = SpectralCube(
+        data=data,
+        wcs=wcs,
+        beam=beam,
+        allow_huge_operations=True,
+    )
+
+    return cube
+
+
+def _create_anisotropic_wcs_cube(
+    x_size: int = 41,
+    y_size: int = 41,
+    vel_size: int = 1,
+    cdelt_x: u.Quantity = 0.05 * u.arcsec,
+    cdelt_y: u.Quantity = 0.1 * u.arcsec,
+    rotation: u.Quantity = 30 * u.deg,
+    beam: Beam = DEFAULT_BEAM,
+    seed: int = 0,
+):
+    """Set up a test cube with anisotropic and/or rotated pixels.
+
+    Unlike ``_create_test_cube``, ``cdelt_x`` and ``cdelt_y`` can differ and the
+    pixel grid can be rotated relative to the sky, so that
+    ``wcs.celestial.pixel_scale_matrix`` is neither diagonal nor a multiple of
+    the identity matrix.
+
+    Args:
+        x_size (int): Size for the cube in x-direction. Defaults to 41.
+        y_size (int): Size for the cube in y-direction. Defaults to 41.
+        vel_size (int): Size for the cube in velocity direction. Defaults to 1.
+        cdelt_x (astropy.units.Quantity): Pixel scale along x. Defaults to 0.05 arcsec.
+        cdelt_y (astropy.units.Quantity): Pixel scale along y. Defaults to 0.1 arcsec.
+        rotation (astropy.units.Quantity): Rotation of the pixel grid relative to the
+            sky. Defaults to 30 deg.
+        beam (Beam): Beam for the cube. Defaults to a beam with major=0.85 arcsec,
+            minor=0.65 arcsec, pa=45 deg.
+        seed (int): Seed for the random data. Defaults to 0.
+    """
+
+    rng = np.random.default_rng(seed)
+    data = rng.normal(size=(vel_size, y_size, x_size)).astype(np.float32) * u.K
+
+    cdelt_x_deg = cdelt_x.to_value(u.deg)
+    cdelt_y_deg = cdelt_y.to_value(u.deg)
+    theta = rotation.to_value(u.rad)
+
+    wcs = WCS(naxis=3)
+    wcs.wcs.ctype = ["RA---TAN", "DEC--TAN", "VRAD"]
+    wcs.wcs.crval = [0.0, 0.0, 0.0]
+    wcs.wcs.cdelt = [-cdelt_x_deg, cdelt_y_deg, 2500]
+    wcs.wcs.crpix = [0.0, 0.0, 0.0]
+    wcs.wcs.pc = [
+        [np.cos(theta), -np.sin(theta), 0.0],
+        [np.sin(theta), np.cos(theta), 0.0],
+        [0.0, 0.0, 1.0],
+    ]
+
     cube = SpectralCube(
         data=data,
         wcs=wcs,
@@ -797,3 +860,147 @@ class TestConvolveUV:
             )
 
         assert image_slice.allow_huge_operations is False
+
+    def test_nan_interpolation_kernel_matches_covariance(self):
+        """Test the NaN interpolation kernel's second moments match the input covariance
+
+        This directly exercises the fix for using the full pixel-space beam
+        covariance (rather than a single, isotropic pixel scale) to build the
+        NaN interpolation kernel, for both anisotropic and rotated cases.
+        """
+
+        covariances = [
+            np.diag([9.0, 1.0]),  # anisotropic, axis-aligned
+            np.array([[5.0, 3.0], [3.0, 5.0]]),  # anisotropic, rotated 45 deg
+        ]
+
+        for covariance in covariances:
+            kernel = nan_interpolation_kernel(covariance)
+
+            assert kernel.shape[0] % 2 == 1 and kernel.shape[1] % 2 == 1
+            assert np.isclose(kernel.sum(), 1.0)
+
+            half_y, half_x = (kernel.shape[0] - 1) // 2, (kernel.shape[1] - 1) // 2
+            y, x = np.mgrid[-half_y : half_y + 1, -half_x : half_x + 1]
+
+            measured_cov = np.array(
+                [
+                    [np.sum(kernel * x * x), np.sum(kernel * x * y)],
+                    [np.sum(kernel * x * y), np.sum(kernel * y * y)],
+                ]
+            )
+
+            assert np.allclose(measured_cov, covariance, atol=5e-2)
+
+    def test_nan_interpolation_kernel_depends_on_full_covariance(self):
+        """Test the kernel differs when only off-axis covariance terms change
+
+        A regression test for the bug where the interpolation kernel was built
+        from ``proj_plane_pixel_scales(...)[0]`` alone, so it was blind to
+        anisotropy (differing y-axis scale) and rotation (off-diagonal terms).
+        """
+
+        def _measured_covariance(kernel: np.ndarray) -> np.ndarray:
+            half_y, half_x = (kernel.shape[0] - 1) // 2, (kernel.shape[1] - 1) // 2
+            y, x = np.mgrid[-half_y : half_y + 1, -half_x : half_x + 1]
+            return np.array(
+                [
+                    [np.sum(kernel * x * x), np.sum(kernel * x * y)],
+                    [np.sum(kernel * x * y), np.sum(kernel * y * y)],
+                ]
+            )
+
+        isotropic = np.diag([4.0, 4.0])
+        anisotropic = np.diag([4.0, 1.0])
+        rotated = np.array([[4.0, 2.0], [2.0, 4.0]])
+
+        cov_isotropic = _measured_covariance(nan_interpolation_kernel(isotropic))
+        cov_anisotropic = _measured_covariance(nan_interpolation_kernel(anisotropic))
+        cov_rotated = _measured_covariance(nan_interpolation_kernel(rotated))
+
+        # Same [0, 0] covariance element, but the kernels must differ once the
+        # rest of the covariance matrix is accounted for.
+        assert not np.allclose(cov_isotropic, cov_anisotropic, atol=5e-2)
+        assert not np.allclose(cov_isotropic, cov_rotated, atol=5e-2)
+        assert np.allclose(cov_anisotropic, anisotropic, atol=5e-2)
+        assert np.allclose(cov_rotated, rotated, atol=5e-2)
+
+    def test_nan_interpolation_kernel_degenerate_covariance_raises(self):
+        """Test a degenerate (zero) covariance matrix raises a clear error"""
+
+        with pytest.raises(ValueError, match="degenerate"):
+            nan_interpolation_kernel(np.zeros((2, 2)))
+
+    def test_kernel_covariance_pixels_anisotropic_rotated(self):
+        """Test kernel_covariance_pixels uses the full pixel-scale matrix
+
+        For an anisotropic and rotated WCS, the resulting pixel-space
+        covariance should not simply be the sky covariance divided by a single
+        scalar pixel scale.
+        """
+
+        cube = _create_anisotropic_wcs_cube()
+        target_beam = _get_common_beam(cube.beam)
+
+        covariance = kernel_covariance_pixels(cube[0], target_beam)
+
+        # Off-diagonal terms should be non-zero because of the rotation, and
+        # the two axes should have different variances because of the
+        # anisotropic pixel scale.
+        assert not np.isclose(covariance[0, 1], 0.0)
+        assert not np.isclose(covariance[0, 0], covariance[1, 1])
+
+    def test_convolve_uv_nan_interpolation_anisotropic_rotated_wcs(self):
+        """Test NaN interpolation works end-to-end with anisotropic/rotated pixels"""
+
+        cube = _create_anisotropic_wcs_cube(x_size=41, y_size=41, vel_size=1)
+        data = cube.unmasked_data[:].value.copy()
+        data[0, 20, 20] = np.nan
+        cube = SpectralCube(
+            data=data,
+            wcs=cube.wcs,
+            beam=cube.beam,
+            allow_huge_operations=True,
+        )
+        target_beam = _get_common_beam(cube.beam)
+
+        cube_conv = convolve_uv(
+            image=cube,
+            target_beam=target_beam,
+            nan_treatment="interpolate",
+            preserve_nan=False,
+        )
+        res = cube_conv.unitless_filled_data[:]
+
+        assert cube_conv.beam == target_beam
+        assert np.all(np.isfinite(res))
+
+    def test_convolve_uv_preserves_ordinary_square_pixels(self):
+        """Test NaN interpolation is unchanged for ordinary, square pixels"""
+
+        pix_scale = 0.1 * u.arcsec
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1, pix_scale=pix_scale)
+        data = cube.unmasked_data[:].value.copy()
+        data[0, 10, 10] = np.nan
+        cube = SpectralCube(
+            data=data,
+            wcs=cube.wcs,
+            beam=cube.beam,
+            allow_huge_operations=True,
+        )
+        common_beam = _get_common_beam(cube.beam)
+
+        cube_conv = convolve_uv(
+            image=cube,
+            target_beam=common_beam,
+            nan_treatment="interpolate",
+        )
+        res = cube_conv.unitless_filled_data[:]
+
+        analytic_kernel = common_beam.as_kernel(
+            pixscale=pix_scale, x_size=cube.shape[2], y_size=cube.shape[1]
+        ).array
+
+        assert cube_conv.beam == common_beam
+        assert np.all(np.isfinite(res))
+        assert np.allclose(res, analytic_kernel[np.newaxis, ...], atol=2e-3)

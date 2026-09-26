@@ -2,7 +2,6 @@ import astropy.units as u
 import numpy as np
 from astropy.convolution import convolve_fft, interpolate_replace_nans
 from astropy.utils.console import ProgressBar
-from astropy.wcs.utils import proj_plane_pixel_scales
 from radio_beam import Beam
 from radio_beam.utils import BeamError
 from spectral_cube import Projection, SpectralCube, VaryingResolutionSpectralCube
@@ -67,6 +66,47 @@ def kernel_covariance_pixels(
     cov = sky_to_pix @ kernel_sky @ sky_to_pix.T
 
     return cov
+
+
+def nan_interpolation_kernel(
+    covariance_xy: np.ndarray,
+    pad_sigma: float = 8.0,
+) -> np.ndarray:
+    """Build a normalized Gaussian kernel array for NaN interpolation.
+
+    Unlike sampling a `radio_beam.Beam` with a single, isotropic pixel scale,
+    this evaluates the Gaussian directly from the full 2x2 pixel-space
+    covariance matrix (the same one used by :func:`transfer_function`), so it
+    correctly captures anisotropic and/or rotated pixel grids.
+
+    Args:
+        covariance_xy (np.ndarray): The 2x2 covariance matrix of the kernel in pixel
+            (x, y) coordinates.
+        pad_sigma (float, optional): Kernel half-size, in units of the largest marginal
+            standard deviation of the covariance matrix. Defaults to 8.0.
+
+    Returns:
+        np.ndarray: A square, odd-sized, unit-sum 2D Gaussian kernel array.
+    """
+
+    eigenvalues = np.linalg.eigvalsh(covariance_xy)
+    sigma_max = np.sqrt(max(float(eigenvalues.max()), 0.0))
+    if sigma_max <= 0:
+        raise ValueError(
+            "The kernel covariance matrix is degenerate, so no NaN interpolation "
+            "kernel is available"
+        )
+
+    half_size = max(int(np.ceil(pad_sigma * sigma_max)), 1)
+    y, x = np.mgrid[-half_size : half_size + 1, -half_size : half_size + 1]
+    coords = np.stack([x, y], axis=-1).astype(float)
+
+    inv_cov = np.linalg.inv(covariance_xy)
+    exponent = -0.5 * np.einsum("...i,ij,...j->...", coords, inv_cov, coords)
+    kernel = np.exp(exponent)
+    kernel /= kernel.sum()
+
+    return kernel
 
 
 def transfer_function(
@@ -190,16 +230,15 @@ def do_convolution(
 
     # Check the beams can be deconvolved
     try:
-        kernel = target_beam.deconvolve(image_slice.beam)
+        target_beam.deconvolve(image_slice.beam)
     except BeamError:
         raise ValueError(
             "The target beam is smaller than the input beam, so cannot be deconvolved"
         )
 
-    # Pull out the pixel scale, convert the kernel to an array
-    pix_scale = proj_plane_pixel_scales(image_slice.wcs.celestial)[0] * u.deg
-    kernel = kernel.as_kernel(pixscale=pix_scale).array
-
+    # The full pixel-space covariance (including any anisotropy/rotation) is used both
+    # for the Fourier transfer function below, and to build a matching NaN
+    # interpolation kernel.
     covariance = kernel_covariance_pixels(image_slice, target_beam)
     data = image_slice.unitless_filled_data[:]
     if image_slice.mask is None:
@@ -214,9 +253,10 @@ def do_convolution(
     if nan_treatment == "fill":
         data = np.where(np.isfinite(data), data, fill_value)
     elif nan_treatment == "interpolate":
+        interpolation_kernel = nan_interpolation_kernel(covariance)
         data = interpolate_replace_nans(
             data,
-            kernel,
+            interpolation_kernel,
             convolve=convolve_fft,
         )
 
