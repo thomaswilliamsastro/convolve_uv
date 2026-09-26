@@ -181,10 +181,7 @@ def _create_test_varying_resolution_cube(
         for i in range(vel_size)
     ]
     beams = Beams(beams=beams)
-    data = [
-        b.as_kernel(pixscale=pix_scale, x_size=x_size, y_size=y_size).array
-        for b in beams
-    ]
+    data = [b.as_kernel(pixscale=pix_scale, x_size=x_size, y_size=y_size).array for b in beams]
     data = np.array(data)
     data *= unit
 
@@ -236,8 +233,6 @@ def _get_common_beam(
 
 
 class TestConvolveUV:
-
-    @pytest.mark.xfail(raises=ValueError, reason="Invalid boundary value")
     def test_non_valid_boundary(self):
         """Test passing a non-valid boundary keyword"""
 
@@ -245,13 +240,13 @@ class TestConvolveUV:
         cube = _create_test_cube(pix_scale=pix_scale)
         common_beam = _get_common_beam(cube.beam)
 
-        convolve_uv(
-            image=cube,
-            target_beam=common_beam,
-            boundary="this_should_fail",
-        )
+        with pytest.raises(ValueError, match="boundary must be"):
+            convolve_uv(
+                image=cube,
+                target_beam=common_beam,
+                boundary="this_should_fail",
+            )
 
-    @pytest.mark.xfail(raises=ValueError, reason="Singular WCS")
     def test_singular_wcs(self):
         """Test passing a singular WCS"""
 
@@ -262,12 +257,12 @@ class TestConvolveUV:
         cube.wcs.wcs.pc = np.array([[1.0, 1.0, 0.0], [1.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
         common_beam = _get_common_beam(cube.beam)
 
-        convolve_uv(
-            image=cube,
-            target_beam=common_beam,
-        )
+        with pytest.raises(ValueError, match="singular pixel-scale matrix"):
+            convolve_uv(
+                image=cube,
+                target_beam=common_beam,
+            )
 
-    @pytest.mark.xfail(raises=ValueError, reason="Invalid boundary value")
     def test_non_valid_nan_treatment(self):
         """Test passing a non-valid nan_treatment keyword"""
 
@@ -275,13 +270,13 @@ class TestConvolveUV:
         cube = _create_test_cube(pix_scale=pix_scale)
         common_beam = _get_common_beam(cube.beam)
 
-        convolve_uv(
-            image=cube,
-            target_beam=common_beam,
-            nan_treatment="this_should_fail",
-        )
+        with pytest.raises(ValueError, match="nan_treatment must be"):
+            convolve_uv(
+                image=cube,
+                target_beam=common_beam,
+                nan_treatment="this_should_fail",
+            )
 
-    @pytest.mark.xfail(raises=AttributeError, reason="Cube without beam passed")
     def test_non_valid_cube_beam(self):
         """Test passing a cube without a beam"""
 
@@ -289,24 +284,24 @@ class TestConvolveUV:
         cube = _create_test_cube(pix_scale=pix_scale, beam=None)
         common_beam = Beam(major=1 * u.arcsec, minor=1 * u.arcsec, pa=0 * u.deg)
 
-        convolve_uv(
-            image=cube,
-            target_beam=common_beam,
-        )
+        with pytest.raises(AttributeError, match="image_slice must have a valid beam"):
+            convolve_uv(
+                image=cube,
+                target_beam=common_beam,
+            )
 
-    @pytest.mark.xfail(raises=TypeError, reason="Input beam not Beam object")
     def test_non_valid_target_beam(self):
         """Test passing a non-valid target beam"""
 
         pix_scale = 0.1 * u.arcsec
         cube = _create_test_cube(pix_scale=pix_scale)
 
-        convolve_uv(
-            image=cube,
-            target_beam="this_should_fail",
-        )
+        with pytest.raises(TypeError, match="Input beam must be a Beam object"):
+            convolve_uv(
+                image=cube,
+                target_beam="this_should_fail",
+            )
 
-    @pytest.mark.xfail(raises=ValueError, reason="Target beam smaller than input beam")
     def test_too_small_target_beam(self):
         """Test passing a too-small target beam"""
 
@@ -314,10 +309,11 @@ class TestConvolveUV:
         cube = _create_test_cube(pix_scale=pix_scale)
         target_beam = Beam(0.1 * u.arcsec, 0.1 * u.arcsec, pa=0 * u.deg)
 
-        convolve_uv(
-            image=cube,
-            target_beam=target_beam,
-        )
+        with pytest.raises(ValueError, match="target beam is smaller than the input beam"):
+            convolve_uv(
+                image=cube,
+                target_beam=target_beam,
+            )
 
     @pytest.mark.parametrize("boundary", BOUNDARY_KEYWORDS)
     def test_boundary_keywords(
@@ -343,78 +339,56 @@ class TestConvolveUV:
             pixscale=pix_scale, x_size=cube.shape[2], y_size=cube.shape[1]
         ).array
 
-        assert (
-            cube_conv.beam == common_beam
-        ), "Convolved cube beam does not match target beam"
-        assert np.allclose(
-            res, analytic_kernel[np.newaxis, ...]
-        ), "Convolved kernel does not match analytic kernel"
+        assert cube_conv.beam == common_beam, "Convolved cube beam does not match target beam"
+        assert np.allclose(res, analytic_kernel[np.newaxis, ...]), (
+            "Convolved kernel does not match analytic kernel"
+        )
 
     @pytest.mark.parametrize("nan_treatment", NAN_TREATMENT_KEYWORDS)
+    @pytest.mark.parametrize("preserve_nan", [True, False])
     def test_nan_treatment_keywords(
         self,
         nan_treatment: str,
+        preserve_nan: bool,
     ):
-        """Test passing nan_treatment keywords
+        """Test NaN handling during a non-identity beam convolution
 
         Args:
             nan_treatment (str): The nan_treatment keyword to test.
+            preserve_nan (bool): Whether to restore the original NaN positions.
         """
 
-        pix_scale = 0.1 * u.arcsec
-        cube = _create_test_cube(pix_scale=pix_scale)
-        common_beam = _get_common_beam(cube.beam)
+        base_cube = _create_test_cube(x_size=41, y_size=41, vel_size=1)
+        data = np.ones(base_cube.shape, dtype=np.float32)
+        data[0, 20, 20] = np.nan
+        cube = SpectralCube(
+            data=data,
+            wcs=base_cube.wcs,
+            beam=base_cube.beam,
+            allow_huge_operations=True,
+        )
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
 
         cube_conv = convolve_uv(
-            image=cube, target_beam=common_beam, nan_treatment=nan_treatment
+            image=cube,
+            target_beam=target_beam,
+            nan_treatment=nan_treatment,
+            fill_value=-100.0,
+            preserve_nan=preserve_nan,
         )
+        res = cube_conv.unmasked_data[:].value
 
-        res = cube_conv.unitless_filled_data[:]
-
-        # Compare to the analytic kernel
-        analytic_kernel = common_beam.as_kernel(
-            pixscale=pix_scale, x_size=cube.shape[2], y_size=cube.shape[1]
-        ).array
-
-        assert (
-            cube_conv.beam == common_beam
-        ), "Convolved cube beam does not match target beam"
-        assert np.allclose(
-            res, analytic_kernel[np.newaxis, ...]
-        ), "Convolved kernel does not match analytic kernel"
-
-    @pytest.mark.parametrize("preserve_nan", [True, False])
-    def test_preserve_nan(
-        self,
-        preserve_nan: bool,
-    ):
-        """Test preserve_nan True and False
-
-        Args:
-            preserve_nan (bool): Whether to preserve NaN values or not.
-        """
-
-        pix_scale = 0.1 * u.arcsec
-        cube = _create_test_cube(pix_scale=pix_scale)
-        common_beam = _get_common_beam(cube.beam)
-
-        cube_conv = convolve_uv(
-            image=cube, target_beam=common_beam, preserve_nan=preserve_nan
-        )
-
-        res = cube_conv.unitless_filled_data[:]
-
-        # Compare to the analytic kernel
-        analytic_kernel = common_beam.as_kernel(
-            pixscale=pix_scale, x_size=cube.shape[2], y_size=cube.shape[1]
-        ).array
-
-        assert (
-            cube_conv.beam == common_beam
-        ), "Convolved cube beam does not match target beam"
-        assert np.allclose(
-            res, analytic_kernel[np.newaxis, ...]
-        ), "Convolved kernel does not match analytic kernel"
+        assert cube_conv.beam == target_beam
+        expected_nan = np.zeros(res.shape, dtype=bool)
+        if preserve_nan:
+            expected_nan[0, 20, 20] = True
+        assert np.array_equal(np.isnan(res), expected_nan)
+        if not preserve_nan:
+            assert np.all(np.isfinite(res))
+            if nan_treatment == "interpolate":
+                assert np.isclose(res[0, 20, 20], 1.0, atol=1e-5)
+            else:
+                assert res[0, 20, 20] < 0.9
 
     @pytest.mark.parametrize("common_beam_resolution", TEST_RESOLUTIONS)
     def test_convolve_cube(
@@ -455,12 +429,10 @@ class TestConvolveUV:
             pixscale=pix_scale, x_size=cube.shape[2], y_size=cube.shape[1]
         ).array
 
-        assert (
-            cube_conv.beam == common_beam
-        ), "Convolved cube beam does not match target beam"
-        assert np.allclose(
-            res, analytic_kernel[np.newaxis, ...]
-        ), "Convolved kernel does not match analytic kernel"
+        assert cube_conv.beam == common_beam, "Convolved cube beam does not match target beam"
+        assert np.allclose(res, analytic_kernel[np.newaxis, ...]), (
+            "Convolved kernel does not match analytic kernel"
+        )
 
     @pytest.mark.parametrize("common_beam_resolution", TEST_RESOLUTIONS)
     def test_convolve_cube_jy_beam(
@@ -505,12 +477,10 @@ class TestConvolveUV:
         beam_ratio_factor = (common_beam.sr / cube.beam.sr).value
         analytic_kernel *= beam_ratio_factor
 
-        assert (
-            cube_conv.beam == common_beam
-        ), "Convolved cube beam does not match target beam"
-        assert np.allclose(
-            res, analytic_kernel[np.newaxis, ...]
-        ), "Convolved kernel does not match analytic kernel"
+        assert cube_conv.beam == common_beam, "Convolved cube beam does not match target beam"
+        assert np.allclose(res, analytic_kernel[np.newaxis, ...]), (
+            "Convolved kernel does not match analytic kernel"
+        )
 
     @pytest.mark.parametrize("common_beam_resolution", TEST_RESOLUTIONS)
     def test_convolve_slice(
@@ -554,12 +524,8 @@ class TestConvolveUV:
             pixscale=pix_scale, x_size=cube.shape[1], y_size=cube.shape[0]
         ).array
 
-        assert (
-            cube_conv.beam == common_beam
-        ), "Convolved cube beam does not match target beam"
-        assert np.allclose(
-            res, analytic_kernel
-        ), "Convolved kernel does not match analytic kernel"
+        assert cube_conv.beam == common_beam, "Convolved cube beam does not match target beam"
+        assert np.allclose(res, analytic_kernel), "Convolved kernel does not match analytic kernel"
 
     @pytest.mark.parametrize("common_beam_resolution", TEST_RESOLUTIONS)
     def test_convolve_varying_resolution_spectral_cube(
@@ -601,12 +567,8 @@ class TestConvolveUV:
             pixscale=pix_scale, x_size=cube.shape[2], y_size=cube.shape[1]
         ).array
 
-        assert (
-            cube_conv.beam == common_beam
-        ), "Convolved cube beam does not match target beam"
-        assert np.allclose(
-            res, analytic_kernel
-        ), "Convolved kernel does not match analytic kernel"
+        assert cube_conv.beam == common_beam, "Convolved cube beam does not match target beam"
+        assert np.allclose(res, analytic_kernel), "Convolved kernel does not match analytic kernel"
 
     def test_convolve_slice_same_beam(self):
         """Test convolving a cube slice to the same beam"""
@@ -630,12 +592,8 @@ class TestConvolveUV:
             pixscale=pix_scale, x_size=cube.shape[1], y_size=cube.shape[0]
         ).array
 
-        assert (
-            cube_conv.beam == common_beam
-        ), "Convolved cube beam does not match target beam"
-        assert np.allclose(
-            res, analytic_kernel
-        ), "Convolved kernel does not match analytic kernel"
+        assert cube_conv.beam == common_beam, "Convolved cube beam does not match target beam"
+        assert np.allclose(res, analytic_kernel), "Convolved kernel does not match analytic kernel"
 
     def test_same_beam_preserves_nan(self):
         """Test an identical-beam operation preserves NaN values"""
@@ -748,6 +706,39 @@ class TestConvolveUV:
         assert np.allclose(res[:, :, :11], 1.0, atol=1e-5)
         assert np.array_equal(cube_conv.mask.include(), mask)
 
+    def test_do_convolution_with_no_valid_pixels(self):
+        """Test convolution returns NaNs when every pixel is masked"""
+
+        base_cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        cube = base_cube.with_mask(np.zeros(base_cube.shape, dtype=bool))
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        result = do_convolution(cube[0], target_beam, nan_treatment="fill")
+
+        assert np.all(np.isnan(result))
+
+    def test_do_convolution_with_all_nan_data_and_fill_treatment(self):
+        """Test filling an all-NaN image produces the requested fill value"""
+
+        base_cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        data = np.full(base_cube.shape, np.nan, dtype=np.float32)
+        cube = SpectralCube(
+            data=data,
+            wcs=base_cube.wcs,
+            beam=base_cube.beam,
+            allow_huge_operations=True,
+        )
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        result = do_convolution(
+            cube[0],
+            target_beam,
+            nan_treatment="fill",
+            fill_value=-2.5,
+        )
+
+        assert np.allclose(result, -2.5)
+
     @pytest.mark.parametrize("data_dtype", [np.int16, np.bool_])
     def test_convolve_preserves_input_dtype(self, data_dtype: np.dtype):
         """Test convolution preserves the dtype exposed by the cube slice"""
@@ -802,12 +793,8 @@ class TestConvolveUV:
             pixscale=pix_scale, x_size=cube.shape[1], y_size=cube.shape[0]
         ).array
 
-        assert (
-            cube_conv.beam == common_beam
-        ), "Convolved cube beam does not match target beam"
-        assert np.allclose(
-            res, analytic_kernel
-        ), "Convolved kernel does not match analytic kernel"
+        assert cube_conv.beam == common_beam, "Convolved cube beam does not match target beam"
+        assert np.allclose(res, analytic_kernel), "Convolved kernel does not match analytic kernel"
 
     def test_convolve_cube_restores_allow_huge_operations(self):
         """Test convolve_uv does not permanently mutate a cube's allow_huge_operations"""

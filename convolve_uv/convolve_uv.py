@@ -252,7 +252,7 @@ def do_convolution(
     # If we're filling NaNs, then do that here
     if nan_treatment == "fill":
         data = np.where(np.isfinite(data), data, fill_value)
-    elif nan_treatment == "interpolate":
+    else:
         interpolation_kernel = nan_interpolation_kernel(covariance)
         data = interpolate_replace_nans(
             data,
@@ -271,8 +271,6 @@ def do_convolution(
         pad_width = [(0, 0)] * (data.ndim - 2) + [(pad_y, pad_y), (pad_x, pad_x)]
         data = np.pad(data, pad_width, mode="constant", constant_values=fill_value)
         valid = np.pad(valid, pad_width, mode="constant", constant_values=False)
-    elif boundary == "wrap":
-        pass
 
     transfer = transfer_function(data.shape, covariance)
     numerator = fft_filter(np.where(valid, data, 0.0), transfer)
