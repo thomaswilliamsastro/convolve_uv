@@ -29,7 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Document core dependency minimums, test minimum and latest compatible dependency sets in CI for every supported Python version, and separate core runtime Dependabot updates (#23).
 
 ### Dependencies
-
+- Bump `setuptools-scm` from 10.2.3 to 10.3.4 ([#24](https://github.com/thomaswilliamsastro/convolve_uv/pull/24))
+- Bump `astral-sh/setup-uv` from 7.6.0 to 10.2.0 ([#30](https://github.com/thomaswilliamsastro/convolve_uv/pull/30))
 - Bump `setuptools-scm` from 10.2.3 to 10.3.4 ([#24](https://github.com/thomaswilliamsastro/convolve_uv/pull/24))
 
 ## [0.3.0]
