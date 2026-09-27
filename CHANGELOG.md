@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Warn with `convolve_uv.LargeCubeMemoryWarning` when convolving a cube large enough that spectral-cube's `allow_huge_operations` safeguard would normally apply, and document that `convolve_uv` materializes the whole cube into memory (#28).
+
 ### Fixed
 
 - Exclude masked pixels from convolution weights and preserve input data types (#14).

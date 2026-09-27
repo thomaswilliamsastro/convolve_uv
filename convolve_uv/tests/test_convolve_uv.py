@@ -1,12 +1,15 @@
+import warnings
+
 import astropy.units as u
 import numpy as np
 import pytest
 from astropy.wcs import WCS
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
-from spectral_cube import SpectralCube, VaryingResolutionSpectralCube
+from spectral_cube import SpectralCube, VaryingResolutionSpectralCube, cube_utils
 
 from ..convolve_uv import (
+    LargeCubeMemoryWarning,
     beam_covariance_en,
     convolve_uv,
     do_convolution,
@@ -1058,6 +1061,60 @@ class TestConvolveUV:
             )
 
         assert image_slice.allow_huge_operations is False
+
+    def test_convolve_cube_below_huge_threshold_is_quiet(self):
+        """Test convolve_uv does not warn for a cube below spectral-cube's huge-operation threshold"""
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=2)
+        assert cube.size < cube_utils.MEMORY_THRESHOLD
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", LargeCubeMemoryWarning)
+            convolve_uv(image=cube, target_beam=target_beam)
+
+    def test_convolve_cube_at_huge_threshold_warns(self, monkeypatch):
+        """Test convolve_uv warns once a cube's size reaches spectral-cube's huge-operation threshold
+
+        The threshold itself (``spectral_cube.cube_utils.MEMORY_THRESHOLD``) is lowered so the
+        test can exercise the boundary without allocating a genuinely huge cube.
+        """
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=2)
+        monkeypatch.setattr(cube_utils, "MEMORY_THRESHOLD", cube.size)
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        with pytest.warns(LargeCubeMemoryWarning, match=str(cube.size)):
+            convolve_uv(image=cube, target_beam=target_beam)
+
+    def test_convolve_cube_huge_warning_does_not_mutate_allow_huge_operations(self, monkeypatch):
+        """Test the large-cube warning leaves the caller's allow_huge_operations untouched"""
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=2)
+        cube.allow_huge_operations = False
+        monkeypatch.setattr(cube_utils, "MEMORY_THRESHOLD", cube.size)
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        with pytest.warns(LargeCubeMemoryWarning):
+            convolve_uv(image=cube, target_beam=target_beam)
+
+        assert cube.allow_huge_operations is False
+
+    def test_convolve_projection_never_warns_about_huge_operations(self, monkeypatch):
+        """Test convolve_uv never emits the large-cube warning for a bare Projection
+
+        Projections don't carry an ``allow_huge_operations`` attribute in spectral-cube, so
+        the huge-operation check/warning should never apply to them regardless of size.
+        """
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        image_slice = cube[0]
+        monkeypatch.setattr(cube_utils, "MEMORY_THRESHOLD", image_slice.size)
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", LargeCubeMemoryWarning)
+            convolve_uv(image=image_slice, target_beam=target_beam)
 
     def test_nan_interpolation_kernel_matches_covariance(self):
         """Test the NaN interpolation kernel's second moments match the input covariance
