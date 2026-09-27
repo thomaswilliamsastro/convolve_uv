@@ -7,6 +7,7 @@ from radio_beam.utils import BeamError
 from spectral_cube import SpectralCube, VaryingResolutionSpectralCube
 
 from ..convolve_uv import (
+    beam_covariance_en,
     convolve_uv,
     do_convolution,
     kernel_covariance_pixels,
@@ -233,6 +234,90 @@ def _get_common_beam(
 
 
 class TestConvolveUV:
+    @pytest.mark.parametrize("operation", ["convolve_uv", "do_convolution"])
+    @pytest.mark.parametrize("pad_sigma", [-1.0, np.nan, np.inf, -np.inf, None])
+    def test_invalid_pad_sigma(
+        self,
+        operation: str,
+        pad_sigma: float,
+    ):
+        """Both public convolution entry points reject invalid pad_sigma values"""
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+        image = cube if operation == "convolve_uv" else cube[0]
+
+        with pytest.raises(
+            ValueError, match="pad_sigma must be a finite, non-negative number"
+        ):
+            if operation == "convolve_uv":
+                convolve_uv(image=image, target_beam=target_beam, pad_sigma=pad_sigma)
+            else:
+                do_convolution(
+                    image_slice=image, target_beam=target_beam, pad_sigma=pad_sigma
+                )
+
+    @pytest.mark.parametrize("operation", ["convolve_uv", "do_convolution"])
+    def test_zero_pad_sigma_is_allowed(self, operation: str):
+        """A zero-width boundary pad is valid for both public entry points"""
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+        image = cube if operation == "convolve_uv" else cube[0]
+
+        if operation == "convolve_uv":
+            result = convolve_uv(
+                image=image,
+                target_beam=target_beam,
+                pad_sigma=0,
+                nan_treatment="fill",
+            )
+            result_data = result.unmasked_data[:].value
+        else:
+            result = do_convolution(
+                image_slice=image,
+                target_beam=target_beam,
+                pad_sigma=0,
+                nan_treatment="fill",
+            )
+            result_data = result
+
+        assert result.shape == image.shape
+        assert np.all(np.isfinite(result_data))
+
+    @pytest.mark.parametrize("operation", ["convolve_uv", "do_convolution"])
+    @pytest.mark.parametrize("pad_sigma", [-1.0, np.nan, np.inf, -np.inf, None])
+    def test_invalid_pad_sigma_is_ignored_for_wrap(
+        self,
+        operation: str,
+        pad_sigma: float,
+    ):
+        """Padding values are not validated when wrapping is selected"""
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+        image = cube if operation == "convolve_uv" else cube[0]
+
+        if operation == "convolve_uv":
+            result = convolve_uv(
+                image=image,
+                target_beam=target_beam,
+                boundary="wrap",
+                pad_sigma=pad_sigma,
+                nan_treatment="fill",
+            )
+            result_data = result.unmasked_data[:].value
+        else:
+            result_data = do_convolution(
+                image_slice=image,
+                target_beam=target_beam,
+                boundary="wrap",
+                pad_sigma=pad_sigma,
+                nan_treatment="fill",
+            )
+
+        assert np.all(np.isfinite(result_data))
+
     def test_non_valid_boundary(self):
         """Test passing a non-valid boundary keyword"""
 
@@ -243,6 +328,12 @@ class TestConvolveUV:
         with pytest.raises(ValueError, match="boundary must be"):
             convolve_uv(
                 image=cube,
+                target_beam=common_beam,
+                boundary="this_should_fail",
+            )
+        with pytest.raises(ValueError, match="boundary must be"):
+            do_convolution(
+                image_slice=cube[0],
                 target_beam=common_beam,
                 boundary="this_should_fail",
             )
@@ -262,6 +353,125 @@ class TestConvolveUV:
                 image=cube,
                 target_beam=common_beam,
             )
+
+    def test_non_finite_wcs(self):
+        """Test a non-finite celestial WCS is rejected with a contextual error"""
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        cube.wcs.wcs.pc = np.array(
+            [[np.nan, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+        )
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        with pytest.raises(
+            ValueError, match="celestial WCS is invalid or singular"
+        ):
+            convolve_uv(image=cube, target_beam=target_beam)
+
+    @pytest.mark.parametrize(
+        ("pixel_scale_matrix", "message"),
+        [
+            (np.ones((1, 1)), "finite 2x2 values"),
+            (np.array([[np.nan, 0.0], [0.0, 1.0]]), "finite 2x2 values"),
+        ],
+    )
+    def test_invalid_pixel_scale_matrix(
+        self,
+        pixel_scale_matrix: np.ndarray,
+        message: str,
+    ):
+        """Malformed pixel-scale matrices raise a contextual error"""
+
+        class TestWCS:
+            def __init__(self, matrix):
+                self.celestial = self
+                self.pixel_scale_matrix = matrix
+
+        class TestSlice:
+            def __init__(self):
+                self.beam = DEFAULT_BEAM
+                self.wcs = TestWCS(pixel_scale_matrix)
+
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        with pytest.raises(ValueError, match=message):
+            kernel_covariance_pixels(TestSlice(), target_beam)
+
+    def test_wcs_matrix_error_is_contextual(self):
+        """WCS conversion errors are wrapped with pixel-scale context"""
+
+        class TestWCS:
+            def __init__(self):
+                self.celestial = self
+
+            @property
+            def pixel_scale_matrix(self):
+                raise ValueError("invalid WCS")
+
+        class TestSlice:
+            def __init__(self):
+                self.beam = DEFAULT_BEAM
+                self.wcs = TestWCS()
+
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        with pytest.raises(
+            ValueError, match="Unable to compute the celestial WCS pixel-scale matrix"
+        ):
+            kernel_covariance_pixels(TestSlice(), target_beam)
+
+    def test_wcs_matrix_inverse_error_is_contextual(self, monkeypatch):
+        """A numerical WCS inversion failure is reported as a singular matrix"""
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        def fail_inverse(_matrix):
+            raise np.linalg.LinAlgError("test failure")
+
+        monkeypatch.setattr(np.linalg, "inv", fail_inverse)
+
+        with pytest.raises(ValueError, match="singular pixel-scale matrix"):
+            kernel_covariance_pixels(cube[0], target_beam)
+
+    def test_non_finite_wcs_inverse_is_contextual(self, monkeypatch):
+        """A non-finite WCS inverse is rejected before covariance math"""
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+        monkeypatch.setattr(
+            np.linalg, "inv", lambda _matrix: np.array([[np.inf, 0.0], [0.0, 1.0]])
+        )
+
+        with pytest.raises(ValueError, match="pixel-scale matrix has a non-finite inverse"):
+            kernel_covariance_pixels(cube[0], target_beam)
+
+    def test_wcs_covariance_transform_error_is_contextual(self):
+        """Overflow while transforming a valid covariance reports WCS context"""
+
+        class TestWCS:
+            def __init__(self):
+                self.celestial = self
+                self.pixel_scale_matrix = np.eye(2) * 1e-160
+
+        class TestSlice:
+            def __init__(self):
+                self.beam = DEFAULT_BEAM
+                self.wcs = TestWCS()
+
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        with np.errstate(over="raise"), pytest.raises(
+            ValueError,
+            match="Pixel-space kernel covariance must be a finite 2x2 covariance matrix",
+        ):
+            kernel_covariance_pixels(TestSlice(), target_beam)
+
+    def test_beam_covariance_invalid_beam_is_contextual(self):
+        """Invalid beam inputs raise a contextual error"""
+
+        with pytest.raises(ValueError, match="Beam covariance requires finite angular"):
+            beam_covariance_en(None)
 
     def test_non_valid_nan_treatment(self):
         """Test passing a non-valid nan_treatment keyword"""
@@ -917,6 +1127,49 @@ class TestConvolveUV:
 
         with pytest.raises(ValueError, match="degenerate"):
             nan_interpolation_kernel(np.zeros((2, 2)))
+
+    @pytest.mark.parametrize(
+        ("covariance", "message"),
+        [
+            (np.ones((3, 3)), "finite 2x2 covariance matrix"),
+            (np.array([["bad", 0.0], [0.0, 1.0]]), "finite 2x2 covariance matrix"),
+            (np.array([[np.nan, 0.0], [0.0, 1.0]]), "finite 2x2 covariance matrix"),
+            (np.array([[1.0, 0.1], [0.0, 1.0]]), "must be symmetric"),
+            (np.diag([1.0, -1.0]), "must be positive semidefinite"),
+            (np.diag([1.0, 0.0]), "must be positive definite"),
+        ],
+    )
+    def test_invalid_interpolation_covariance_raises(
+        self,
+        covariance: np.ndarray,
+        message: str,
+    ):
+        """Invalid and singular covariance matrices raise contextual errors"""
+
+        with pytest.raises(ValueError, match=message):
+            nan_interpolation_kernel(covariance)
+
+    def test_covariance_eigenvalue_error_is_contextual(self, monkeypatch):
+        """A covariance eigensolver error is reported with matrix context"""
+
+        def fail_eigvalsh(_covariance):
+            raise np.linalg.LinAlgError("test failure")
+
+        monkeypatch.setattr(np.linalg, "eigvalsh", fail_eigvalsh)
+
+        with pytest.raises(ValueError, match="Unable to evaluate NaN interpolation covariance"):
+            nan_interpolation_kernel(np.eye(2))
+
+    def test_covariance_inverse_error_is_contextual(self, monkeypatch):
+        """A covariance inversion error is reported as a positive-definiteness failure"""
+
+        def fail_inverse(_covariance):
+            raise np.linalg.LinAlgError("test failure")
+
+        monkeypatch.setattr(np.linalg, "inv", fail_inverse)
+
+        with pytest.raises(ValueError, match="must be positive definite"):
+            nan_interpolation_kernel(np.eye(2))
 
     def test_kernel_covariance_pixels_anisotropic_rotated(self):
         """Test kernel_covariance_pixels uses the full pixel-scale matrix

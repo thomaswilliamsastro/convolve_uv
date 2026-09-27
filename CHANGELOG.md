@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restore `allow_huge_operations` after `convolve_uv` instead of permanently mutating caller state (#17).
 - Build the NaN interpolation kernel from the full pixel-space beam covariance instead of a single, isotropic WCS pixel scale, fixing incorrect interpolation for anisotropic/rotated pixels (#18).
 - Harden invalid-input and NaN-handling tests, with full line and branch coverage for `convolve_uv/convolve_uv.py` (#19).
+- Validate finite, non-negative padding and report contextual errors for invalid WCS and covariance matrices (#25).
 
 ### Updated
 
