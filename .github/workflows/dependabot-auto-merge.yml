@@ -1,0 +1,115 @@
+name: Dependabot Auto-Merge
+
+# SECURITY NOTE: this workflow intentionally uses `pull_request`, not
+# `pull_request_target`. It never checks out the pull request's code and
+# never runs anything from the PR diff itself - it only calls the GitHub
+# API (via `gh`) using metadata from the `github.event.pull_request`
+# context. This keeps the default GITHUB_TOKEN scoped to the triggering
+# ref's permissions and avoids the classic `pull_request_target` +
+# "checkout PR head" privilege-escalation pattern.
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+    branches:
+      - main
+
+# Least-privilege default; the job below narrowly escalates only the two
+# permissions actually required to review/enable auto-merge.
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  # One run per PR. Do not cancel an in-flight run: it may be mid-way
+  # through approving/enabling auto-merge, and a duplicate run triggered by
+  # a fast follow-up push (e.g. the changelog bot's commit, see below) is
+  # cheap and idempotent, so letting both finish in order is safer than
+  # cancelling a partially-applied change.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  approve-and-merge:
+    name: Approve and enable auto-merge
+    runs-on: ubuntu-latest
+    # Only ever act on Dependabot's own pull requests, and only while they
+    # are open and targeting `main`. `pull_request.user.login` identifies
+    # the PR *author* and cannot be spoofed by the PR's contents/diff, so
+    # this is safe to check even though the job itself only uses
+    # `pull_request` (not `pull_request_target`).
+    #
+    # Dependabot pull requests are opened from a branch on this repository
+    # (not a fork - see the same assumption in dependabot-changelog.yml),
+    # so `head.repo.full_name == base.repo.full_name` is expected to always
+    # be true here. It is checked anyway as defense in depth: if it were
+    # ever false (e.g. a future change to how Dependabot is configured),
+    # the job intentionally does not run rather than approve/merge a PR
+    # whose head lives outside this repository.
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
+
+    permissions:
+      pull-requests: write
+      # Required (in addition to pull-requests: write) for the
+      # GraphQL `enablePullRequestAutoMerge` mutation that
+      # `gh pr merge --auto` uses under the hood.
+      contents: write
+
+    steps:
+      - name: Guard against closed/merged PRs
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          state=$(gh pr view "$PR_URL" --json state --jq .state)
+          echo "PR state: $state"
+          if [ "$state" != "OPEN" ]; then
+            echo "Pull request is not open ($state); nothing to do."
+            echo "should_continue=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_continue=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Approve pull request
+        # Re-running on every push (including the commit pushed by
+        # dependabot-changelog.yml, which triggers its own `synchronize`
+        # event for this same PR) is intentional: some branch protection
+        # configurations dismiss stale approvals on new commits, and
+        # re-approving here after every push means the PR is never left
+        # stuck waiting on a dismissed review. `gh pr review --approve` is
+        # idempotent enough for our purposes - GitHub allows resubmitting an
+        # approval and it does not affect required-check state.
+        if: steps.guard.outputs.should_continue == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          gh pr review "$PR_URL" --approve \
+            --body "Automatically approved: Dependabot pull request."
+
+      - name: Enable auto-merge
+        # `gh pr merge --auto` only *enables* auto-merge; GitHub performs
+        # the actual merge itself once all required status checks report
+        # success and required reviews are satisfied. It does not bypass
+        # branch protection, does not merge early, and safely no-ops
+        # (non-fatal) if auto-merge is already enabled from a previous run
+        # of this workflow.
+        #
+        # Uses squash merges to match this repository's established
+        # single-commit-per-dependency-bump history. Change `--squash`
+        # below if the repository's merge method changes.
+        if: steps.guard.outputs.should_continue == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_URL" --auto --squash
