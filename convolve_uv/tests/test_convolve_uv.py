@@ -172,12 +172,13 @@ def _create_test_varying_resolution_cube(
     """
 
     # Make a bunch of beams that increase in size with velocity channel,
-    # with a random orientation
+    # with deterministic but varied orientations
+    rng = np.random.default_rng(seed=0)
     beams = [
         Beam(
             major=(0.5 + (0.02 * i)) * u.arcsec,
             minor=(0.4 + (0.01 * i)) * u.arcsec,
-            pa=np.random.randint(10, 30) * u.deg,
+            pa=rng.integers(10, 30) * u.deg,
         )
         for i in range(vel_size)
     ]
