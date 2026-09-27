@@ -13,11 +13,19 @@ on:
     branches:
       - main
 
+# Read-only: the action only inspects the PR diff, it never needs write access.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  Check-Changelog:
-    name: Check Changelog Action
+  check-changelog:
+    name: Check Changelog
     runs-on: ubuntu-latest
     steps:
-      - uses: tarides/changelog-check-action@v4
+      - uses: tarides/changelog-check-action@8f47e0becbfa549e4c82a3f562aa6f90d2c2ee8c # v4
         with:
           changelog: CHANGELOG.md

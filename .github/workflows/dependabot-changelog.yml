@@ -1,4 +1,4 @@
-name: 'Add Dependabot Changelog'
+name: Add Dependabot Changelog
 on:
   pull_request:
     types:
@@ -9,9 +9,24 @@ on:
       - labeled
       - unlabeled
 
+# Default to read-only; the changelog job below narrowly escalates to
+# contents: write only for the step that needs to push a commit.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   changelog:
+    name: Update Changelog
     runs-on: ubuntu-latest
+    # Dependabot PRs are opened from a branch on this repository (not a
+    # fork), so the default GITHUB_TOKEN is writable for them. Restrict the
+    # job to Dependabot-authored PRs so this elevated permission is never
+    # exercised against arbitrary/fork pull requests.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
 
     permissions:
       # Give the default GITHUB_TOKEN write permission to commit and push the
@@ -22,15 +37,14 @@ jobs:
       # Add changelog entry
       - uses: actions/checkout@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ github.head_ref }}
           # Value already defaults to true, but `persist-credentials` is required to push new commits to the repository.
           persist-credentials: true
-      - uses: dangoslen/dependabot-changelog-helper@v4.3.0
+      - uses: dangoslen/dependabot-changelog-helper@291c8cb629d7cd7b57ea065782c435ec2bedb138 # v4.3.0
         with:
           activationLabels: dependencies
           changelogPath: 'CHANGELOG.md'
           dependencyTool: dependabot
-      - uses: stefanzweifel/git-auto-commit-action@v7
+      - uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7
         with:
           commit_message: "Updated Changelog"
