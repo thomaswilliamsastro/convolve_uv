@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Warn with `convolve_uv.LargeCubeMemoryWarning` when convolving a cube large enough that spectral-cube's `allow_huge_operations` safeguard would normally apply, and document that `convolve_uv` materializes the whole cube into memory (#28).
+- Add a `dependabot-auto-merge.yml` GitHub Actions workflow that approves Dependabot pull requests and enables auto-merge once all required checks pass, without bypassing branch protection or using `pull_request_target` (#29).
 
 ### Fixed
 
