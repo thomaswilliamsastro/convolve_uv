@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ignore tox-generated coverage and JUnit report files (#15).
 - Harden GitHub Actions workflow and Dependabot security: least-privilege permissions, PyPI Trusted Publishing (OIDC), SHA-pinned third-party actions, and consistent job/step naming (#20).
 
+### Dependencies
+
+- Bump `setuptools-scm` from 10.2.3 to 10.3.4 ([#21](https://github.com/thomaswilliamsastro/convolve_uv/pull/21))
+
 ## [0.3.0]
 
 ### Added
