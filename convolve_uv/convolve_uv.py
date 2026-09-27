@@ -1,3 +1,5 @@
+import warnings
+
 import astropy.units as u
 import numpy as np
 from astropy.convolution import convolve_fft, interpolate_replace_nans
@@ -5,10 +7,21 @@ from astropy.utils.console import ProgressBar
 from astropy.wcs import WcsError
 from radio_beam import Beam
 from radio_beam.utils import BeamError
-from spectral_cube import Projection, SpectralCube, VaryingResolutionSpectralCube
-from spectral_cube.utils import NoBeamError
+from spectral_cube import (
+    Projection,
+    SpectralCube,
+    VaryingResolutionSpectralCube,
+    cube_utils,
+)
+from spectral_cube.utils import NoBeamError, SpectralCubeWarning
 
 FWHM_TO_SIGMA = 1.0 / np.sqrt(8.0 * np.log(2.0))
+
+
+class LargeCubeMemoryWarning(SpectralCubeWarning):
+    """Warned when a cube is large enough that spectral-cube's own
+    ``allow_huge_operations`` safeguard would normally require the caller to
+    opt in before loading the whole cube into memory."""
 
 
 # Keep the public convolution entry points consistent about padding values.
@@ -467,12 +480,38 @@ def convolve_uv(
 
     Returns:
         Projection | SpectralCube: The convolved Projection or SpectralCube
+
+    Note:
+        For a 3D ``SpectralCube``/``VaryingResolutionSpectralCube`` input, the
+        entire cube is materialized into memory to build the convolved output
+        (as well as an unsliced copy of the input), so memory use may be
+        substantial. If the cube is large enough that spectral-cube's own
+        ``allow_huge_operations`` safeguard would normally require the caller
+        to opt in (i.e. ``cube.size >= spectral_cube.cube_utils.MEMORY_THRESHOLD``),
+        a :class:`LargeCubeMemoryWarning` is emitted. The caller's
+        ``allow_huge_operations`` attribute is only temporarily overridden for
+        the duration of the call and is always restored afterwards.
     """
 
     if boundary not in {"fill", "wrap"}:
         raise ValueError("boundary must be 'fill' or 'wrap'")
     if boundary == "fill":
         pad_sigma = _validate_pad_sigma(pad_sigma)
+
+    # Convolving a full cube requires materializing the whole cube (and a copy
+    # of it) in memory. Warn using spectral-cube's own huge-operation
+    # threshold/semantics (``cube_utils.is_huge``/``MEMORY_THRESHOLD``) so
+    # users get the same signal they would from spectral-cube itself, without
+    # us guessing at a different threshold.
+    if not isinstance(image, Projection) and cube_utils.is_huge(image):
+        warnings.warn(
+            "convolve_uv requires loading the entire cube into memory "
+            f"({image.size} pixels), which may use substantial memory. "
+            "This matches the size at which spectral-cube's own "
+            "`allow_huge_operations` safeguard would normally apply.",
+            LargeCubeMemoryWarning,
+            stacklevel=2,
+        )
 
     # We need to keep everything in memory while we work on the cube/projection.
     # ``allow_huge_operations`` is a plain instance attribute on the caller-owned
