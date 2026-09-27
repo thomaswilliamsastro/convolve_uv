@@ -26,9 +26,20 @@ updates:
     schedule:
       interval: "weekly"
     groups:
-      python-dependencies:
+      core-runtime-dependencies:
+        patterns:
+          - "astropy"
+          - "numpy"
+          - "radio-beam"
+          - "spectral-cube"
+      other-python-dependencies:
         patterns:
           - "*"
+        exclude-patterns:
+          - "astropy"
+          - "numpy"
+          - "radio-beam"
+          - "spectral-cube"
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
