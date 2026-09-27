@@ -2,12 +2,78 @@ import astropy.units as u
 import numpy as np
 from astropy.convolution import convolve_fft, interpolate_replace_nans
 from astropy.utils.console import ProgressBar
+from astropy.wcs import WcsError
 from radio_beam import Beam
 from radio_beam.utils import BeamError
 from spectral_cube import Projection, SpectralCube, VaryingResolutionSpectralCube
 from spectral_cube.utils import NoBeamError
 
 FWHM_TO_SIGMA = 1.0 / np.sqrt(8.0 * np.log(2.0))
+
+
+# Keep the public convolution entry points consistent about padding values.
+def _validate_pad_sigma(pad_sigma: float) -> float:
+    """Return ``pad_sigma`` as a finite, non-negative float.
+
+    Raises:
+        ValueError: If ``pad_sigma`` cannot be converted to a finite number
+            greater than or equal to zero.
+    """
+    try:
+        pad_sigma = float(pad_sigma)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError("pad_sigma must be a finite, non-negative number") from None
+    if not np.isfinite(pad_sigma) or pad_sigma < 0:
+        raise ValueError("pad_sigma must be a finite, non-negative number")
+    return pad_sigma
+
+
+# Normalize covariance inputs and reject invalid matrices before linear algebra.
+def _validate_covariance(
+    covariance: np.ndarray,
+    context: str,
+) -> np.ndarray:
+    """Return a validated, symmetric covariance matrix.
+
+    The matrix must be finite, 2x2, symmetric within floating-point tolerance,
+    and positive semidefinite. Minor asymmetry is removed by symmetrizing it.
+
+    Args:
+        covariance: Matrix to validate.
+        context: Description used to contextualize validation errors.
+
+    Returns:
+        The validated covariance matrix as a floating-point NumPy array.
+
+    Raises:
+        ValueError: If the matrix is malformed, non-finite, asymmetric, or not
+            positive semidefinite.
+    """
+    try:
+        covariance = np.asarray(covariance, dtype=float)
+    except (TypeError, ValueError):
+        raise ValueError(f"{context} must be a finite 2x2 covariance matrix") from None
+    if covariance.shape != (2, 2) or not np.all(np.isfinite(covariance)):
+        raise ValueError(f"{context} must be a finite 2x2 covariance matrix")
+
+    scale = float(np.max(np.abs(covariance)))
+    symmetry_tolerance = 100 * np.finfo(float).eps * scale
+    if not np.allclose(
+        covariance, covariance.T, rtol=0.0, atol=symmetry_tolerance
+    ):
+        raise ValueError(f"{context} must be symmetric")
+    covariance = (covariance + covariance.T) / 2
+
+    try:
+        eigenvalues = np.linalg.eigvalsh(covariance)
+    except np.linalg.LinAlgError as error:
+        raise ValueError(f"Unable to evaluate {context}") from error
+    eigenvalue_tolerance = 100 * np.finfo(float).eps * float(
+        np.max(np.abs(eigenvalues))
+    )
+    if eigenvalues.min() < -eigenvalue_tolerance:
+        raise ValueError(f"{context} must be positive semidefinite")
+    return covariance
 
 
 def beam_covariance_en(
@@ -21,16 +87,21 @@ def beam_covariance_en(
     Returns:
         np.ndarray: The 2x2 covariance matrix of the beam in (east, north) coordinates.
     """
-    smaj = beam.major.to_value(u.deg) * FWHM_TO_SIGMA
-    smin = beam.minor.to_value(u.deg) * FWHM_TO_SIGMA
-    angle = beam.pa.to_value(u.rad)
+    try:
+        smaj = beam.major.to_value(u.deg) * FWHM_TO_SIGMA
+        smin = beam.minor.to_value(u.deg) * FWHM_TO_SIGMA
+        angle = beam.pa.to_value(u.rad)
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("Beam covariance requires finite angular beam values") from error
     major_hat = np.array([np.sin(angle), np.cos(angle)])
     minor_hat = np.array([np.cos(angle), -np.sin(angle)])
 
-    cov = smaj**2 * np.outer(major_hat, major_hat) + smin**2 * np.outer(
-        minor_hat, minor_hat
-    )
+    with np.errstate(over="ignore", invalid="ignore", under="ignore"):
+        cov = smaj**2 * np.outer(major_hat, major_hat) + smin**2 * np.outer(
+            minor_hat, minor_hat
+        )
 
+    cov = _validate_covariance(cov, "Beam covariance")
     return cov
 
 
@@ -58,13 +129,37 @@ def kernel_covariance_pixels(
 
     # pixel_scale_matrix maps (dx, dy) pixels to local projected (east, north)
     # degrees.  This includes rotation and unequal pixel scales.
-    jacobian = np.asarray(cube_slice.wcs.celestial.pixel_scale_matrix, dtype=float)
-    if jacobian.shape != (2, 2) or abs(np.linalg.det(jacobian)) < 1e-20:
-        raise ValueError("The celestial WCS has a singular pixel-scale matrix")
-    sky_to_pix = np.linalg.inv(jacobian)
+    try:
+        jacobian = np.asarray(
+            cube_slice.wcs.celestial.pixel_scale_matrix, dtype=float
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError(
+            "Unable to compute the celestial WCS pixel-scale matrix"
+        ) from error
+    if jacobian.shape != (2, 2) or not np.all(np.isfinite(jacobian)):
+        raise ValueError(
+            "The celestial WCS pixel-scale matrix must contain finite 2x2 values"
+        )
+    try:
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            determinant_sign, _ = np.linalg.slogdet(jacobian)
+            if determinant_sign == 0:
+                raise ValueError(
+                    "The celestial WCS has a singular pixel-scale matrix"
+                )
+            sky_to_pix = np.linalg.inv(jacobian)
+    except np.linalg.LinAlgError as error:
+        raise ValueError("The celestial WCS has a singular pixel-scale matrix") from error
+    if not np.all(np.isfinite(sky_to_pix)):
+        raise ValueError(
+            "The celestial WCS pixel-scale matrix has a non-finite inverse"
+        )
 
-    cov = sky_to_pix @ kernel_sky @ sky_to_pix.T
+    with np.errstate(over="ignore", invalid="ignore", under="ignore"):
+        cov = sky_to_pix @ kernel_sky @ sky_to_pix.T
 
+    cov = _validate_covariance(cov, "Pixel-space kernel covariance")
     return cov
 
 
@@ -83,12 +178,17 @@ def nan_interpolation_kernel(
         covariance_xy (np.ndarray): The 2x2 covariance matrix of the kernel in pixel
             (x, y) coordinates.
         pad_sigma (float, optional): Kernel half-size, in units of the largest marginal
-            standard deviation of the covariance matrix. Defaults to 8.0.
+            standard deviation of the covariance matrix. Must be finite and
+            non-negative; zero is allowed. Defaults to 8.0.
 
     Returns:
         np.ndarray: A square, odd-sized, unit-sum 2D Gaussian kernel array.
     """
 
+    pad_sigma = _validate_pad_sigma(pad_sigma)
+    covariance_xy = _validate_covariance(
+        covariance_xy, "NaN interpolation covariance"
+    )
     eigenvalues = np.linalg.eigvalsh(covariance_xy)
     sigma_max = np.sqrt(max(float(eigenvalues.max()), 0.0))
     if sigma_max <= 0:
@@ -96,12 +196,21 @@ def nan_interpolation_kernel(
             "The kernel covariance matrix is degenerate, so no NaN interpolation "
             "kernel is available"
         )
+    if eigenvalues.min() <= 0:
+        raise ValueError(
+            "The NaN interpolation covariance must be positive definite"
+        )
 
     half_size = max(int(np.ceil(pad_sigma * sigma_max)), 1)
     y, x = np.mgrid[-half_size : half_size + 1, -half_size : half_size + 1]
     coords = np.stack([x, y], axis=-1).astype(float)
 
-    inv_cov = np.linalg.inv(covariance_xy)
+    try:
+        inv_cov = np.linalg.inv(covariance_xy)
+    except np.linalg.LinAlgError as error:
+        raise ValueError(
+            "The NaN interpolation covariance must be positive definite"
+        ) from error
     exponent = -0.5 * np.einsum("...i,ij,...j->...", coords, inv_cov, coords)
     kernel = np.exp(exponent)
     kernel /= kernel.sum()
@@ -122,6 +231,9 @@ def transfer_function(
     Returns:
         np.ndarray: The transfer function in Fourier space.
     """
+    covariance_xy = _validate_covariance(
+        covariance_xy, "Fourier transfer covariance"
+    )
     ny, nx = shape_yx
     fx = np.fft.rfftfreq(nx)
     fy = np.fft.fftfreq(ny)
@@ -185,8 +297,9 @@ def do_convolution(
         fill_value (float, optional): Value used to replace non-finite data when
             ``nan_treatment='fill'``. Defaults to 0.0.
         pad_sigma (float, optional): Number of kernel standard deviations to pad on each
-            side when using ``boundary='fill'``. Ignored when ``boundary='wrap'``.
-            Defaults to 8.0.
+            side when using ``boundary='fill'``. Ignored and not validated when
+            ``boundary='wrap'``. For ``'fill'``, it must be finite and non-negative;
+            zero is allowed. Defaults to 8.0.
         nan_treatment (str, optional): The method used to handle NaNs in the input slice:
 
             * ``interpolate`` (default): ``NaN`` values are replaced with interpolated
@@ -215,6 +328,8 @@ def do_convolution(
 
     if boundary not in {"fill", "wrap"}:
         raise ValueError("boundary must be 'fill' or 'wrap'")
+    if boundary == "fill":
+        pad_sigma = _validate_pad_sigma(pad_sigma)
     if nan_treatment not in {"interpolate", "fill"}:
         raise ValueError("nan_treatment must be 'interpolate' or 'fill'")
 
@@ -336,8 +451,9 @@ def convolve_uv(
         fill_value (float, optional): Value used to replace non-finite data when
             ``nan_treatment='fill'``. Defaults to 0.0.
         pad_sigma (float, optional): Number of kernel standard deviations to pad on each
-            side when using ``boundary='fill'``. Ignored when ``boundary='wrap'``.
-            Defaults to 8.0.
+            side when using ``boundary='fill'``. Ignored and not validated when
+            ``boundary='wrap'``. For ``'fill'``, it must be finite and non-negative;
+            zero is allowed. Defaults to 8.0.
         nan_treatment (str, optional): The method used to handle NaNs in the input slice:
 
             * ``interpolate`` (default): ``NaN`` values are replaced with interpolated
@@ -352,6 +468,11 @@ def convolve_uv(
     Returns:
         Projection | SpectralCube: The convolved Projection or SpectralCube
     """
+
+    if boundary not in {"fill", "wrap"}:
+        raise ValueError("boundary must be 'fill' or 'wrap'")
+    if boundary == "fill":
+        pad_sigma = _validate_pad_sigma(pad_sigma)
 
     # We need to keep everything in memory while we work on the cube/projection.
     # ``allow_huge_operations`` is a plain instance attribute on the caller-owned
@@ -374,7 +495,13 @@ def convolve_uv(
 
             # To avoid adding in unnecessary slice info to the header,
             # take a copy of the cube
-            image_copy = image._new_cube_with()
+            try:
+                image_copy = image._new_cube_with()
+            except WcsError as error:
+                raise ValueError(
+                    "The celestial WCS is invalid or singular and cannot be "
+                    "prepared for convolution"
+                ) from error
 
             with ProgressBar(n_chan) as bar:
                 for chan in range(n_chan):
