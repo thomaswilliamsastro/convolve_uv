@@ -1,19 +1,34 @@
-extend = "pyproject.toml"
-
-extend-exclude = [
-    ".github",
-]
-
 line-length = 100
 
-target-version = "py314"
+# target-version is not set: ruff infers it from requires-python in pyproject.toml
 
 [format]
 quote-style = "double"
 indent-style = "space"
 docstring-code-format = true
 
+[lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "UP",    # pyupgrade
+    "SIM",   # flake8-simplify
+    "RUF",   # ruff-specific rules
+    "C4",    # flake8-comprehensions
+    "PIE",   # flake8-pie
+    "NPY",   # NumPy-specific rules
+    "PERF",  # perflint
+    "PT",    # flake8-pytest-style
+    "D",     # pydocstyle, with the Google convention below
+]
+
 [lint.pydocstyle]
-convention = "numpy"
+convention = "google"
 
 [lint.per-file-ignores]
+# The tests and the Sphinx config do not need a docstring on every module and function
+"convolve_uv/tests/*" = ["D1"]
+"docs/*" = ["D1"]

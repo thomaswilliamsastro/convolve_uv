@@ -151,7 +151,6 @@ def kernel_covariance_pixels(
     Returns:
         np.ndarray: The 2x2 covariance matrix of the kernel in pixel coordinates.
     """
-
     target = beam_covariance_en(target_beam)
     source = beam_covariance_en(cube_slice.beam)
     kernel_sky = target - source
@@ -221,7 +220,6 @@ def nan_interpolation_kernel(
         ValueError: If the covariance is invalid or degenerate, or if the kernel
             would be larger than the maximum supported array size.
     """
-
     pad_sigma = _validate_pad_sigma(pad_sigma)
     covariance_xy = _validate_covariance(
         covariance_xy, "NaN interpolation covariance"
@@ -311,7 +309,6 @@ def fft_filter(
     Returns:
         np.ndarray: The filtered 2D array.
     """
-
     data_fft_filtered = np.fft.irfft2(
         np.fft.rfft2(data) * transfer,
         s=data.shape,
@@ -329,12 +326,12 @@ def do_convolution(
     nan_treatment: str = "interpolate",
     preserve_nan: bool = False,
 ) -> np.ndarray:
-    """Perform the actual convolution
+    """Perform the actual convolution.
 
     Args:
         image_slice (Projection | SpectralCube): Either a full SpectralCube instance,
-            or a projection of a full 3D SpectralCube. If a full SpectralCube, then the cube should only
-            have two dimensions
+            or a projection of a full 3D SpectralCube. If a full SpectralCube, then the
+            cube should only have two dimensions
         target_beam (Beam): The desired circular beam to convolve to.
         boundary (str, optional): ``'wrap'`` applies periodic boundary conditions.
             ``'fill'`` pads the image to reduce wraparound effects and excludes the
@@ -358,18 +355,17 @@ def do_convolution(
               interpolation kernel is available.
             * ``fill``: ``NaN`` values are replaced by ``fill_value`` prior to
               convolution.
-        preserve_nan (bool, optional): After performing convolution, should pixels that were originally NaN again
-            become NaN? Defaults to False.
+        preserve_nan (bool, optional): After performing convolution, should pixels that
+            were originally NaN again become NaN? Defaults to False.
 
     Returns:
         np.ndarray: The convolved image_slice
     """
-
     # Check beams are as we expect
     try:
         beam = image_slice.beam
-    except (AttributeError, NoBeamError):
-        raise AttributeError("image_slice must have a valid beam")
+    except (AttributeError, NoBeamError) as error:
+        raise AttributeError("image_slice must have a valid beam") from error
 
     if not isinstance(target_beam, Beam):
         raise TypeError("Input beam must be a Beam object")
@@ -394,10 +390,10 @@ def do_convolution(
     # Check the beams can be deconvolved
     try:
         target_beam.deconvolve(image_slice.beam)
-    except BeamError:
+    except BeamError as error:
         raise ValueError(
             "The target beam is smaller than the input beam, so cannot be deconvolved"
-        )
+        ) from error
 
     # The full pixel-space covariance (including any anisotropy/rotation) is used both
     # for the Fourier transfer function below, and to build a matching NaN
