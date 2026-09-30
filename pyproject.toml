@@ -70,8 +70,5 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
-# The version comes from the latest ``v*`` git tag (e.g. tag ``v0.4.0`` releases 0.4.0),
-# so releasing means tagging, not editing this file.
-version_file = "convolve_uv/version.py"
 # Used when no git metadata is available (e.g. building from a GitHub source archive).
 fallback_version = "0.0.0+unknown"
