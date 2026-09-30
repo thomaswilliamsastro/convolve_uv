@@ -23,9 +23,12 @@ from ._numerics import _validate_pad_sigma, do_convolution
 
 
 class LargeCubeMemoryWarning(SpectralCubeWarning):
-    """Warned when a cube is large enough that spectral-cube's own
+    """Warning that a cube is large enough to need ``allow_huge_operations``.
+
+    Warned when a cube is large enough that spectral-cube's own
     ``allow_huge_operations`` safeguard would normally require the caller to
-    opt in before loading the whole cube into memory."""
+    opt in before loading the whole cube into memory.
+    """
 
 
 def convolve_uv(
@@ -47,8 +50,8 @@ def convolve_uv(
     so no extra renormalisation is required
 
     Args:
-        image (Projection | SpectralCube | VaryingResolutionSpectralCube): Either a full SpectralCube instance,
-            or a projection of a full 3D SpectralCube.
+        image (Projection | SpectralCube | VaryingResolutionSpectralCube): Either a full
+            SpectralCube instance, or a projection of a full 3D SpectralCube.
         target_beam (Beam): The desired circular beam to convolve to.
         boundary (str, optional): ``'wrap'`` applies periodic boundary conditions.
             ``'fill'`` pads the image to reduce wraparound effects and excludes the
@@ -70,8 +73,8 @@ def convolve_uv(
               possible and will raise an exception.
             * ``fill``: ``NaN`` values are replaced by ``fill_value`` prior to
               convolution.
-        preserve_nan (bool, optional): After performing convolution, should pixels that were originally NaN again
-            become NaN? Defaults to False.
+        preserve_nan (bool, optional): After performing convolution, should pixels that
+            were originally NaN again become NaN? Defaults to False.
 
     Returns:
         Projection | SpectralCube: The convolved Projection or SpectralCube
@@ -87,7 +90,6 @@ def convolve_uv(
         ``allow_huge_operations`` attribute is only temporarily overridden for
         the duration of the call and is always restored afterwards.
     """
-
     if boundary not in {"fill", "wrap"}:
         raise ValueError("boundary must be 'fill' or 'wrap'")
     if boundary == "fill":
@@ -150,7 +152,8 @@ def convolve_uv(
                     )
                     bar.update()
 
-            # If we're a VaryingResolutionSpectralCube, then we need to return a SpectralCube with the new beam
+            # If we're a VaryingResolutionSpectralCube, then we need to return a
+            # SpectralCube with the new beam
             if isinstance(image, VaryingResolutionSpectralCube):
                 image_conv = SpectralCube(
                     data=data_conv,

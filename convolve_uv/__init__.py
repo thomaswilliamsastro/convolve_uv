@@ -1,3 +1,5 @@
+"""Perform Gaussian convolution directly in the uv-plane."""
+
 from importlib.metadata import PackageNotFoundError, version
 
 from .convolve_uv import LargeCubeMemoryWarning, convolve_uv
