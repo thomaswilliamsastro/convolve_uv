@@ -1,5 +1,9 @@
 name: Dependabot Auto-Merge
 
+# Enables GitHub's native auto-merge for Dependabot pull requests that are
+# low-risk, and makes sure it is off for every other one (see the policy in the
+# "Decide" step, and .github/DEPENDABOT_AUTO_MERGE.md).
+#
 # SECURITY NOTE: this workflow intentionally uses `pull_request`, not
 # `pull_request_target`. It never checks out the pull request's code and
 # never runs anything from the PR diff itself - it only calls the GitHub
@@ -17,23 +21,23 @@ on:
       - main
 
 # Least-privilege default; the job below narrowly escalates only the two
-# permissions actually required to review/enable auto-merge.
+# permissions actually required to enable/disable auto-merge.
 permissions:
   contents: read
   pull-requests: read
 
 concurrency:
   # One run per PR. Do not cancel an in-flight run: it may be mid-way
-  # through approving/enabling auto-merge, and a duplicate run triggered by
-  # a fast follow-up push (e.g. the changelog bot's commit, see below) is
-  # cheap and idempotent, so letting both finish in order is safer than
-  # cancelling a partially-applied change.
+  # through enabling or disabling auto-merge, and a duplicate run triggered
+  # by a follow-up push (e.g. the changelog bot's commit, see
+  # dependabot-changelog.yml) is cheap and idempotent, so letting both
+  # finish in order is safer than cancelling a partially-applied change.
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
-  approve-and-merge:
-    name: Approve and enable auto-merge
+  auto-merge:
+    name: Enable auto-merge for low-risk updates
     runs-on: ubuntu-latest
     # Only ever act on Dependabot's own pull requests, and only while they
     # are open and targeting `main`. `pull_request.user.login` identifies
@@ -42,22 +46,22 @@ jobs:
     # `pull_request` (not `pull_request_target`).
     #
     # Dependabot pull requests are opened from a branch on this repository
-    # (not a fork - see the same assumption in dependabot-changelog.yml),
-    # so `head.repo.full_name == base.repo.full_name` is expected to always
-    # be true here. It is checked anyway as defense in depth: if it were
-    # ever false (e.g. a future change to how Dependabot is configured),
-    # the job intentionally does not run rather than approve/merge a PR
-    # whose head lives outside this repository.
+    # (not a fork), so `head.repo.full_name == base.repo.full_name` is
+    # expected to always be true here. It is checked anyway as defense in
+    # depth.
+    #
+    # The job deliberately runs for pushes by anyone, not only by Dependabot:
+    # auto-merge merges whatever the branch head is, so every push has to be
+    # re-checked (see "Decide").
     if: >-
       github.event.pull_request.user.login == 'dependabot[bot]' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
 
     permissions:
+      # `gh pr merge --auto` uses the GraphQL `enablePullRequestAutoMerge`
+      # mutation, which needs both of these.
       pull-requests: write
-      # Required (in addition to pull-requests: write) for the
-      # GraphQL `enablePullRequestAutoMerge` mutation that
-      # `gh pr merge --auto` uses under the hood.
       contents: write
 
     steps:
@@ -77,39 +81,116 @@ jobs:
             echo "should_continue=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Approve pull request
-        # Re-running on every push (including the commit pushed by
-        # dependabot-changelog.yml, which triggers its own `synchronize`
-        # event for this same PR) is intentional: some branch protection
-        # configurations dismiss stale approvals on new commits, and
-        # re-approving here after every push means the PR is never left
-        # stuck waiting on a dismissed review. `gh pr review --approve` is
-        # idempotent enough for our purposes - GitHub allows resubmitting an
-        # approval and it does not affect required-check state.
+      # Reads the update details from Dependabot's *first* commit, which it
+      # verifies is Dependabot's own and signed. It does not look at later
+      # commits, which is why the "Decide" step checks them itself.
+      - name: Fetch Dependabot metadata
+        id: metadata
+        if: steps.guard.outputs.should_continue == 'true'
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      # Policy: auto-merge only patch and minor updates of Python *development*
+      # dependencies, and only if EVERY dependency in the PR qualifies. Never
+      # auto-merged: major updates, runtime dependencies (bumping their minimum
+      # version changes what users of this library can install), and GitHub
+      # Actions (third-party actions are pinned to commit SHAs so that updates
+      # are a deliberate choice, which auto-merging would defeat).
+      #
+      # Commits after the first must be either Dependabot's own signed commits
+      # or touch nothing but CHANGELOG.md (the changelog bot's commit). Anything
+      # else, such as a stray push to the branch, makes the PR ineligible and
+      # turns auto-merge off, because auto-merge would merge it unreviewed.
+      - name: Decide whether the update is low-risk
+        id: decide
         if: steps.guard.outputs.should_continue == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          UPDATES: ${{ steps.metadata.outputs.updated-dependencies-json }}
         run: |
           set -euo pipefail
-          gh pr review "$PR_URL" --approve \
-            --body "Automatically approved: Dependabot pull request."
+          reasons=()
 
+          # 1. What is being updated
+          if ! echo "${UPDATES:-}" | jq -e 'type == "array" and length > 0' > /dev/null 2>&1; then
+            reasons+=("the Dependabot metadata could not be read (the first commit must be Dependabot's own, signed commit)")
+            table="(none)"
+          else
+            table=$(echo "$UPDATES" | jq -r '.[] | "| \(.dependencyName) | \(.packageEcosystem) | \(.dependencyType) | \(.updateType | sub("version-update:semver-"; "")) |"')
+            not_low_risk=$(echo "$UPDATES" | jq -r '
+              .[]
+              | select(
+                  (.packageEcosystem == "pip"
+                   and .dependencyType == "direct:development"
+                   and (.updateType == "version-update:semver-patch"
+                        or .updateType == "version-update:semver-minor"))
+                  | not)
+              | .dependencyName')
+            if [ -n "$not_low_risk" ]; then
+              reasons+=("not a patch/minor update of a Python development dependency: $(echo "$not_low_risk" | paste -sd, - | sed 's/,/, /g')")
+            fi
+          fi
+
+          # 2. The commits on the branch (the first one is Dependabot's)
+          commits=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits" \
+            --jq '.[] | {sha: .sha, author: .author.login, verified: .commit.verification.verified}' | jq -s '.')
+          for sha in $(echo "$commits" | jq -r '.[1:][] | select(.author != "dependabot[bot]" or .verified != true) | .sha'); do
+            files=$(gh api "repos/$REPO/commits/$sha" --jq '[.files[].filename] | sort | join(",")')
+            if [ "$files" != "CHANGELOG.md" ]; then
+              reasons+=("commit ${sha:0:7} is not Dependabot's own and changes files other than CHANGELOG.md ($files)")
+            fi
+          done
+
+          # 3. Result
+          if [ ${#reasons[@]} -eq 0 ]; then
+            eligible=true
+            verdict="**Eligible for auto-merge**: a patch/minor update of Python development dependencies only."
+          else
+            eligible=false
+            verdict="**Not eligible for auto-merge**, so it needs a manual review and merge:"
+            for r in "${reasons[@]}"; do verdict+=$'\n'"- $r"; done
+          fi
+          echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Dependabot auto-merge decision"
+            echo
+            echo "$verdict"
+            echo
+            echo "| Dependency | Ecosystem | Type | Update |"
+            echo "|---|---|---|---|"
+            echo "$table"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "eligible=$eligible"
+
+      # `gh pr merge --auto` only *enables* auto-merge; GitHub performs the
+      # actual merge itself once every required check passes. It does not
+      # bypass the ruleset, does not merge early, and is harmless if auto-merge
+      # is already enabled.
+      #
+      # Uses squash merges to match this repository's single-commit-per-change
+      # history. Change `--squash` below if the repository's merge method changes.
       - name: Enable auto-merge
-        # `gh pr merge --auto` only *enables* auto-merge; GitHub performs
-        # the actual merge itself once all required status checks report
-        # success and required reviews are satisfied. It does not bypass
-        # branch protection, does not merge early, and safely no-ops
-        # (non-fatal) if auto-merge is already enabled from a previous run
-        # of this workflow.
-        #
-        # Uses squash merges to match this repository's established
-        # single-commit-per-dependency-bump history. Change `--squash`
-        # below if the repository's merge method changes.
-        if: steps.guard.outputs.should_continue == 'true'
+        if: steps.guard.outputs.should_continue == 'true' && steps.decide.outputs.eligible == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           set -euo pipefail
           gh pr merge "$PR_URL" --auto --squash
+
+      # An earlier run may have enabled it (for example before Dependabot added
+      # a major update to a group, or before an unexpected commit was pushed).
+      - name: Make sure auto-merge is off
+        if: steps.guard.outputs.should_continue == 'true' && steps.decide.outputs.eligible != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          if [ "$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
+            gh pr merge "$PR_URL" --disable-auto
+            echo "::warning title=Auto-merge disabled::This update is not eligible for auto-merge, so it was switched off. See the job summary."
+          else
+            echo "Auto-merge is not enabled; nothing to do."
+          fi

@@ -40,6 +40,12 @@ updates:
           - "numpy"
           - "radio-beam"
           - "spectral-cube"
+        # Major updates come as separate PRs, so one of them cannot hold back the
+        # minor and patch updates, which are the ones that auto-merge
+        # (see .github/DEPENDABOT_AUTO_MERGE.md).
+        update-types:
+          - "minor"
+          - "patch"
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
