@@ -115,9 +115,7 @@ def convolve_uv(
     # object, so temporarily flip it and restore whatever was there before
     # (including its absence) once we're done, whether or not we succeed.
     _huge_ops_sentinel = object()
-    _original_allow_huge_operations = getattr(
-        image, "allow_huge_operations", _huge_ops_sentinel
-    )
+    _original_allow_huge_operations = getattr(image, "allow_huge_operations", _huge_ops_sentinel)
     image.allow_huge_operations = True
 
     try:
@@ -125,9 +123,7 @@ def convolve_uv(
         if not isinstance(image, Projection):
             n_chan = image.shape[0]
 
-            data_conv = np.zeros(
-                image.shape, dtype=image.unmasked_data[0, 0, 0].dtype
-            )
+            data_conv = np.zeros(image.shape, dtype=image.unmasked_data[0, 0, 0].dtype)
 
             # To avoid adding in unnecessary slice info to the header,
             # take a copy of the cube
