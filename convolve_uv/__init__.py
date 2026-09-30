@@ -1,8 +1,11 @@
+from importlib.metadata import PackageNotFoundError, version
+
 from .convolve_uv import LargeCubeMemoryWarning, convolve_uv
 
 try:
-    from .version import version as __version__
-except ImportError:
+    __version__ = version("convolve_uv")
+except PackageNotFoundError:
+    # Running from a source tree that has not been installed
     __version__ = "dev"
 
 __all__ = [
