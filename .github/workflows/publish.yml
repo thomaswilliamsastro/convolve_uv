@@ -29,14 +29,40 @@ jobs:
         run: python -m build --sdist --wheel --outdir dist/ .
       - name: Validate built artifacts
         run: python -m twine check --strict dist/*
+      - name: Check release tag matches the built version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          for artifact in dist/*.whl dist/*.tar.gz; do
+            name="$(basename "$artifact")"
+            name="${name%.tar.gz}"
+            name="${name%.whl}"
+            built_version="$(echo "$name" | cut -d- -f2)"
+            if [ "$built_version" != "$tag_version" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match built version $built_version ($artifact)"
+              exit 1
+            fi
+          done
       - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/*
 
+  # Run the full test matrix for release tags. upload-pypi depends on this, so
+  # a failing test can never be published.
+  tests:
+    name: Run tests
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/tests.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
   upload-pypi:
     name: Upload to PyPI
-    needs: [build-sdist-and-wheel]
+    needs: [build-sdist-and-wheel, tests]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
     # Restricts this job to the "pypi" GitHub Environment. Configure it under

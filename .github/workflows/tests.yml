@@ -3,13 +3,18 @@ on:
   push:
     branches:
       - main
-    tags:
-      - '*'
   pull_request:
   schedule:
       # run every Tuesday at 5am UTC
       - cron: '0 5 * * 2'
   workflow_dispatch:
+  # Called by publish.yml on release tags, so the PyPI upload can depend on
+  # these tests passing. Tags are deliberately not a direct trigger: that would
+  # run the whole matrix twice for every release.
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
 
 # Least-privilege default: this workflow only runs tests and uploads
 # coverage, it never needs to write to the repository.
@@ -17,7 +22,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # When called from another workflow, github.workflow is the *caller's* name,
+  # so the "-tests-" infix keeps this group distinct from the caller's own
+  # group. Without it, this cancel-in-progress group would match publish.yml's
+  # and could cancel the release run.
+  group: ${{ github.workflow }}-tests-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -60,7 +69,7 @@ jobs:
         # instead of letting coverage reporting quietly stop working.
         shell: bash
         run: |
-          ls *-cov-coverage.xml *-cov-junit.xml
+          ls ./*-cov-coverage.xml ./*-cov-junit.xml
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7
         with:

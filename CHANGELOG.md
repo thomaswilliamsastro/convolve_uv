@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make varying-resolution test beam orientations deterministic without mutating global random state (#26).
 - Select the `-cov` tox environments in the `tox-gh` mapping, and fail the test job if the coverage or JUnit reports are missing (#31).
 - Install `tox-uv` alongside `tox-gh` in CI so each test job runs only the tox environments for its own Python version, instead of every job re-provisioning tox and running the entire environment list (#33).
+- Gate the PyPI upload on the full test matrix, run as a reusable workflow on release tags, and fail the release build if the tag does not match the built package version (#34).
 
 ### Updated
 
