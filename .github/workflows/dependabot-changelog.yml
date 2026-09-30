@@ -30,14 +30,32 @@ jobs:
 
     permissions:
       # Give the default GITHUB_TOKEN write permission to commit and push the
-      # added or changed files to the repository.
+      # added or changed files to the repository (only used as the fallback
+      # when no DEPENDABOT_CHANGELOG_TOKEN secret is configured, see below).
       contents: write
 
     steps:
+      # A commit pushed with the default GITHUB_TOKEN is made by github-actions[bot],
+      # and the workflow runs it triggers are held at "action_required" until a
+      # maintainer approves them, so the required checks never finish on their own.
+      # Pushing with a token belonging to a real user avoids that. Dependabot
+      # workflows can only read *Dependabot* secrets (Settings > Secrets and
+      # variables > Dependabot), not Actions secrets. See
+      # .github/DEPENDABOT_AUTO_MERGE.md for how to create the token.
+      - name: Warn if no push token is configured
+        env:
+          TOKEN: ${{ secrets.DEPENDABOT_CHANGELOG_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::warning title=No DEPENDABOT_CHANGELOG_TOKEN::Falling back to the default GITHUB_TOKEN. The CI runs for the changelog commit will wait for a maintainer to approve them."
+          fi
+
       # Add changelog entry
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.head_ref }}
+          # The git credentials set up here are what the commit action below pushes with
+          token: ${{ secrets.DEPENDABOT_CHANGELOG_TOKEN || github.token }}
           # Value already defaults to true, but `persist-credentials` is required to push new commits to the repository.
           persist-credentials: true
       - uses: dangoslen/dependabot-changelog-helper@291c8cb629d7cd7b57ea065782c435ec2bedb138 # v4.3.0
