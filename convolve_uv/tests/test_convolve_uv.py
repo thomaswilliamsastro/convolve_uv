@@ -1,4 +1,9 @@
+import itertools
+import sys
+import threading
 import warnings
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 
 import astropy.units as u
 import numpy as np
@@ -981,26 +986,94 @@ class TestConvolveUV:
         assert cube_conv.beam == common_beam, "Convolved cube beam does not match target beam"
         assert np.allclose(res, analytic_kernel), "Convolved kernel does not match analytic kernel"
 
-    def test_convolve_cube_restores_allow_huge_operations(self):
-        """Test convolve_uv does not permanently mutate a cube's allow_huge_operations."""
+    @pytest.mark.parametrize("flag", [True, False])
+    def test_convolve_cube_keeps_allow_huge_operations(self, flag: bool):
+        """The input's allow_huge_operations is unchanged, and the result has the same one."""
         cube = _create_test_cube(x_size=21, y_size=21, vel_size=2)
+        cube.allow_huge_operations = flag
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        result = convolve_uv(image=cube, target_beam=target_beam)
+
+        assert cube.allow_huge_operations is flag
+        assert result.allow_huge_operations is flag
+
+    @pytest.mark.parametrize(
+        ("target_arcsec", "error"),
+        [(1.5, None), (0.1, ValueError)],
+        ids=["succeeds", "raises part-way through"],
+    )
+    def test_convolve_cube_never_writes_allow_huge_operations(
+        self, target_arcsec: float, error: type[Exception] | None
+    ):
+        """The input is never written to, not even temporarily, whether or not the call succeeds."""
+        writes = []
+
+        # spectral-cube ships no type information, so its cube class is Any to mypy
+        class RecordingCube(SpectralCube):  # type: ignore[misc]
+            def __setattr__(self, name, value):
+                if getattr(self, "_recording", False):
+                    writes.append(name)
+                super().__setattr__(name, value)
+
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=2)
+        cube.allow_huge_operations = False
+        cube.__class__ = RecordingCube
+        cube._recording = True
+        cube._recorder_check = True
+        target_beam = Beam(
+            major=target_arcsec * u.arcsec, minor=target_arcsec * u.arcsec, pa=0 * u.deg
+        )
+        expectation = (
+            pytest.raises(error, match="smaller than the input beam") if error else nullcontext()
+        )
+
+        with expectation:
+            convolve_uv(image=cube, target_beam=target_beam)
+
+        assert "_recorder_check" in writes
+        assert "allow_huge_operations" not in writes
+
+    def test_concurrent_convolutions_of_one_cube_do_not_interfere(self, monkeypatch):
+        """Two overlapping calls on one cube leave its allow_huge_operations alone.
+
+        The second call starts once the first is part-way through and finishes last, the
+        order in which temporarily overriding the flag used to leave it stuck on True.
+        """
+        module = sys.modules[convolve_uv.__module__]
+        original = module.do_convolution
+        callers = itertools.count()
+        lock = threading.Lock()
+        first_inside = threading.Event()
+        first_done = threading.Event()
+        both_inside = threading.Barrier(2, timeout=30)
+
+        def hold(*args, **kwargs):
+            with lock:
+                position = next(callers)
+            if position == 0:
+                first_inside.set()
+            both_inside.wait()
+            if position == 1:
+                first_done.wait(30)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(module, "do_convolution", hold)
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
         cube.allow_huge_operations = False
         target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
 
-        convolve_uv(image=cube, target_beam=target_beam)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(convolve_uv, image=cube, target_beam=target_beam)
+            first.add_done_callback(lambda _: first_done.set())
+            assert first_inside.wait(30)
+            second = pool.submit(convolve_uv, image=cube, target_beam=target_beam)
+            first_result, second_result = first.result(60), second.result(60)
 
         assert cube.allow_huge_operations is False
-
-    def test_convolve_cube_restores_allow_huge_operations_on_error(self):
-        """Test convolve_uv restores allow_huge_operations even if it raises."""
-        cube = _create_test_cube(x_size=21, y_size=21, vel_size=2)
-        cube.allow_huge_operations = False
-        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
-
-        with pytest.raises(ValueError, match="boundary must be"):
-            convolve_uv(image=cube, target_beam=target_beam, boundary="invalid")
-
-        assert cube.allow_huge_operations is False
+        assert np.array_equal(
+            first_result.unmasked_data[:].value, second_result.unmasked_data[:].value
+        )
 
     def test_convolve_projection_does_not_leak_allow_huge_operations(self):
         """Test convolve_uv doesn't leave a new attribute on a Projection without one."""
@@ -1013,8 +1086,8 @@ class TestConvolveUV:
 
         assert not hasattr(image_slice, "allow_huge_operations")
 
-    def test_convolve_projection_restores_allow_huge_operations_on_error(self):
-        """Test convolve_uv restores a Projection's pre-existing allow_huge_operations on error."""
+    def test_convolve_projection_keeps_allow_huge_operations_on_error(self):
+        """Test convolve_uv keeps a Projection's allow_huge_operations on error."""
         cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
         image_slice = cube[0]
         image_slice.allow_huge_operations = False
