@@ -39,6 +39,7 @@ dependencies = [
 # Optional packages for the test suite
 [project.optional-dependencies]
 test = [
+    "pytest >= 9.0",
     "pytest-cov >= 7.1.0",
 ]
 test-ruff = [
@@ -66,6 +67,17 @@ requires = [
 ]
 
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# The package has no data files. Without this, setuptools_scm's file finder adds every
+# tracked file under convolve_uv/ (including the tests) back in as package data.
+include-package-data = false
+
+[tool.setuptools.packages.find]
+# Ship only the package itself; the tests stay in the sdist (and the repository).
+include = ["convolve_uv*"]
+exclude = ["convolve_uv.tests*"]
+namespaces = false
 
 [tool.setuptools_scm]
 # Used when no git metadata is available (e.g. building from a GitHub source archive).
