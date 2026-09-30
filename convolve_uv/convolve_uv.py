@@ -22,7 +22,8 @@ from spectral_cube.utils import SpectralCubeWarning
 from ._numerics import _validate_pad_sigma, do_convolution
 
 
-class LargeCubeMemoryWarning(SpectralCubeWarning):
+# spectral-cube ships no type information, so its warning class is Any to mypy
+class LargeCubeMemoryWarning(SpectralCubeWarning):  # type: ignore[misc]
     """Warning that a cube is large enough to need ``allow_huge_operations``.
 
     Warned when a cube is large enough that spectral-cube's own

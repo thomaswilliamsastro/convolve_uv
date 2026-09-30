@@ -45,6 +45,9 @@ test = [
 test-ruff = [
     "ruff >= 0.15.10",
 ]
+test-mypy = [
+    "mypy >= 1.19",
+]
 
 # Optional packages for documentation
 docs = [
@@ -69,15 +72,37 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-# The package has no data files. Without this, setuptools_scm's file finder adds every
-# tracked file under convolve_uv/ (including the tests) back in as package data.
+# Without this, setuptools_scm's file finder adds every tracked file under convolve_uv/
+# (including the tests) back in as package data, so the data files are listed explicitly.
 include-package-data = false
+
+[tool.setuptools.package-data]
+# Marks the package as typed for type checkers that use its inline annotations (PEP 561)
+convolve_uv = ["py.typed"]
 
 [tool.setuptools.packages.find]
 # Ship only the package itself; the tests stay in the sdist (and the repository).
 include = ["convolve_uv*"]
 exclude = ["convolve_uv.tests*"]
 namespaces = false
+
+[tool.mypy]
+# The oldest supported Python version
+python_version = "3.12"
+files = ["convolve_uv"]
+strict = true
+
+[[tool.mypy.overrides]]
+# These dependencies ship no type information
+module = ["astropy.*", "radio_beam.*", "spectral_cube.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# The tests are type checked, but not every test function needs annotations
+module = ["convolve_uv.tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
 
 [tool.setuptools_scm]
 # Used when no git metadata is available (e.g. building from a GitHub source archive).

@@ -233,7 +233,7 @@ def nan_interpolation_kernel(
     except np.linalg.LinAlgError as error:
         raise ValueError("The NaN interpolation covariance must be positive definite") from error
     exponent = -0.5 * np.einsum("...i,ij,...j->...", coords, inv_cov, coords)
-    kernel = np.exp(exponent)
+    kernel: np.ndarray = np.exp(exponent)
     kernel /= kernel.sum()
 
     return kernel
@@ -267,7 +267,7 @@ def transfer_function(
             + covariance_xy[1, 1] * fy[:, None] ** 2
         )
     )
-    t_func = np.exp(exponent)
+    t_func: np.ndarray = np.exp(exponent)
 
     return t_func
 
@@ -402,16 +402,16 @@ def do_convolution(
     if boundary == "fill":
         # Marginal standard deviations give a conservative axis-wise pad.
         with np.errstate(over="ignore"):
-            pad_x = float(np.ceil(pad_sigma * np.sqrt(covariance[0, 0])))
-            pad_y = float(np.ceil(pad_sigma * np.sqrt(covariance[1, 1])))
+            pad_x_size = float(np.ceil(pad_sigma * np.sqrt(covariance[0, 0])))
+            pad_y_size = float(np.ceil(pad_sigma * np.sqrt(covariance[1, 1])))
         _check_array_size(
-            (data.shape[-2] + 2.0 * pad_y) * (data.shape[-1] + 2.0 * pad_x),
+            (data.shape[-2] + 2.0 * pad_y_size) * (data.shape[-1] + 2.0 * pad_x_size),
             "The padded image",
             "Reduce pad_sigma, use boundary='wrap', or convolve to a target beam "
             "closer to the image resolution.",
         )
-        pad_x = int(pad_x)
-        pad_y = int(pad_y)
+        pad_x = int(pad_x_size)
+        pad_y = int(pad_y_size)
         pad_width = [(0, 0)] * (data.ndim - 2) + [(pad_y, pad_y), (pad_x, pad_x)]
         data = np.pad(data, pad_width, mode="constant", constant_values=fill_value)
         valid = np.pad(valid, pad_width, mode="constant", constant_values=False)
@@ -422,7 +422,7 @@ def do_convolution(
     # Account for NaNs. This is essentially to get around numerical issues
     denominator = fft_filter(valid.astype(float), transfer)
     scale = max(float(transfer.mean()), 1e-14)
-    cube_slice_conv = np.divide(
+    cube_slice_conv: np.ndarray = np.divide(
         numerator,
         denominator,
         out=np.full_like(numerator, np.nan),
