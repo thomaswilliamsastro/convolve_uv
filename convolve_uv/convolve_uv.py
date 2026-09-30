@@ -69,9 +69,11 @@ def convolve_uv(
         nan_treatment (str, optional): The method used to handle NaNs in the input slice:
 
             * ``interpolate`` (default): ``NaN`` values are replaced with interpolated
-              values using the kernel as an interpolation function. Note that
-              if the kernel has a sum equal to zero, NaN interpolation is not
-              possible and will raise an exception.
+              values using the kernel as an interpolation function. Only valid pixels
+              inside the image are used. A ``NaN`` with no valid data within reach of
+              the kernel (about five kernel widths) stays ``NaN`` and is excluded from
+              the convolution. Note that if the kernel has a sum equal to zero, NaN
+              interpolation is not possible and will raise an exception.
             * ``fill``: ``NaN`` values are replaced by ``fill_value`` prior to
               convolution.
         preserve_nan (bool, optional): After performing convolution, should pixels that
