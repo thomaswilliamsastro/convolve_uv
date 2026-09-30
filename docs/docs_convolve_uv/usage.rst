@@ -39,5 +39,6 @@ do the following:
     materializes the entire cube (and an unsliced copy of it) into memory, so memory use can
     be substantial for large cubes. If the cube is large enough that ``spectral-cube``'s own
     ``allow_huge_operations`` safeguard would normally require you to opt in, ``convolve_uv``
-    emits a ``convolve_uv.LargeCubeMemoryWarning`` rather than raising an error. Your cube's
-    own ``allow_huge_operations`` attribute is left unchanged once ``convolve_uv`` returns.
+    emits a ``convolve_uv.LargeCubeMemoryWarning`` rather than raising an error. Your cube is
+    never modified, including its ``allow_huge_operations`` attribute, and the convolved cube
+    keeps the same ``allow_huge_operations`` setting as the cube you passed in.
