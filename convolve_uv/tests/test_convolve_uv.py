@@ -258,12 +258,8 @@ class TestConvolveUV:
         target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
         image = cube if operation == "convolve_uv" else cube[0]
 
-        with pytest.raises(
-            ValueError, match="pad_sigma must be a finite, non-negative number"
-        ):
-            _run_convolution(
-                operation, image, target_beam=target_beam, pad_sigma=pad_sigma
-            )
+        with pytest.raises(ValueError, match="pad_sigma must be a finite, non-negative number"):
+            _run_convolution(operation, image, target_beam=target_beam, pad_sigma=pad_sigma)
 
     @pytest.mark.parametrize("operation", ["convolve_uv", "do_convolution"])
     def test_zero_pad_sigma_is_allowed(self, operation: str):
@@ -361,14 +357,10 @@ class TestConvolveUV:
     def test_non_finite_wcs(self):
         """Test a non-finite celestial WCS is rejected with a contextual error."""
         cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
-        cube.wcs.wcs.pc = np.array(
-            [[np.nan, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-        )
+        cube.wcs.wcs.pc = np.array([[np.nan, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
         target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
 
-        with pytest.raises(
-            ValueError, match="celestial WCS is invalid or singular"
-        ):
+        with pytest.raises(ValueError, match="celestial WCS is invalid or singular"):
             convolve_uv(image=cube, target_beam=target_beam)
 
     @pytest.mark.parametrize(
@@ -440,9 +432,7 @@ class TestConvolveUV:
         """A non-finite WCS inverse is rejected before covariance math."""
         cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
         target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
-        monkeypatch.setattr(
-            np.linalg, "inv", lambda _matrix: np.array([[np.inf, 0.0], [0.0, 1.0]])
-        )
+        monkeypatch.setattr(np.linalg, "inv", lambda _matrix: np.array([[np.inf, 0.0], [0.0, 1.0]]))
 
         with pytest.raises(ValueError, match="pixel-scale matrix has a non-finite inverse"):
             kernel_covariance_pixels(cube[0], target_beam)
@@ -462,9 +452,12 @@ class TestConvolveUV:
 
         target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
 
-        with np.errstate(over="raise"), pytest.raises(
-            ValueError,
-            match="Pixel-space kernel covariance must be a finite 2x2 covariance matrix",
+        with (
+            np.errstate(over="raise"),
+            pytest.raises(
+                ValueError,
+                match="Pixel-space kernel covariance must be a finite 2x2 covariance matrix",
+            ),
         ):
             kernel_covariance_pixels(TestSlice(), target_beam)
 
@@ -1311,9 +1304,7 @@ class TestArraySizeLimits:
 
         This does not depend on pad_sigma or the boundary.
         """
-        with pytest.raises(
-            ValueError, match="The NaN interpolation kernel would need about"
-        ):
+        with pytest.raises(ValueError, match="The NaN interpolation kernel would need about"):
             self._convolve(
                 operation,
                 target_beam=self.WIDE_BEAM,
@@ -1324,9 +1315,7 @@ class TestArraySizeLimits:
 
     def test_nan_interpolation_kernel_size_limit(self):
         """The limit is enforced by the kernel builder itself."""
-        with pytest.raises(
-            ValueError, match="The NaN interpolation kernel would need about"
-        ):
+        with pytest.raises(ValueError, match="The NaN interpolation kernel would need about"):
             nan_interpolation_kernel(np.eye(2) * 1e8)
 
     @pytest.mark.parametrize("operation", ["convolve_uv", "do_convolution"])
@@ -1338,8 +1327,6 @@ class TestArraySizeLimits:
             boundary="wrap",
             nan_treatment="fill",
         )
-        result_data = (
-            result.unmasked_data[:].value if operation == "convolve_uv" else result
-        )
+        result_data = result.unmasked_data[:].value if operation == "convolve_uv" else result
 
         assert np.all(np.isfinite(result_data))

@@ -91,9 +91,7 @@ def _validate_covariance(
 
     scale = float(np.max(np.abs(covariance)))
     symmetry_tolerance = 100 * np.finfo(float).eps * scale
-    if not np.allclose(
-        covariance, covariance.T, rtol=0.0, atol=symmetry_tolerance
-    ):
+    if not np.allclose(covariance, covariance.T, rtol=0.0, atol=symmetry_tolerance):
         raise ValueError(f"{context} must be symmetric")
     covariance = (covariance + covariance.T) / 2
 
@@ -101,9 +99,7 @@ def _validate_covariance(
         eigenvalues = np.linalg.eigvalsh(covariance)
     except np.linalg.LinAlgError as error:
         raise ValueError(f"Unable to evaluate {context}") from error
-    eigenvalue_tolerance = 100 * np.finfo(float).eps * float(
-        np.max(np.abs(eigenvalues))
-    )
+    eigenvalue_tolerance = 100 * np.finfo(float).eps * float(np.max(np.abs(eigenvalues)))
     if eigenvalues.min() < -eigenvalue_tolerance:
         raise ValueError(f"{context} must be positive semidefinite")
     return covariance
@@ -130,9 +126,7 @@ def beam_covariance_en(
     minor_hat = np.array([np.cos(angle), -np.sin(angle)])
 
     with np.errstate(over="ignore", invalid="ignore", under="ignore"):
-        cov = smaj**2 * np.outer(major_hat, major_hat) + smin**2 * np.outer(
-            minor_hat, minor_hat
-        )
+        cov = smaj**2 * np.outer(major_hat, major_hat) + smin**2 * np.outer(minor_hat, minor_hat)
 
     cov = _validate_covariance(cov, "Beam covariance")
     return cov
@@ -162,31 +156,21 @@ def kernel_covariance_pixels(
     # pixel_scale_matrix maps (dx, dy) pixels to local projected (east, north)
     # degrees.  This includes rotation and unequal pixel scales.
     try:
-        jacobian = np.asarray(
-            cube_slice.wcs.celestial.pixel_scale_matrix, dtype=float
-        )
+        jacobian = np.asarray(cube_slice.wcs.celestial.pixel_scale_matrix, dtype=float)
     except (AttributeError, TypeError, ValueError) as error:
-        raise ValueError(
-            "Unable to compute the celestial WCS pixel-scale matrix"
-        ) from error
+        raise ValueError("Unable to compute the celestial WCS pixel-scale matrix") from error
     if jacobian.shape != (2, 2) or not np.all(np.isfinite(jacobian)):
-        raise ValueError(
-            "The celestial WCS pixel-scale matrix must contain finite 2x2 values"
-        )
+        raise ValueError("The celestial WCS pixel-scale matrix must contain finite 2x2 values")
     try:
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
             determinant_sign, _ = np.linalg.slogdet(jacobian)
             if determinant_sign == 0:
-                raise ValueError(
-                    "The celestial WCS has a singular pixel-scale matrix"
-                )
+                raise ValueError("The celestial WCS has a singular pixel-scale matrix")
             sky_to_pix = np.linalg.inv(jacobian)
     except np.linalg.LinAlgError as error:
         raise ValueError("The celestial WCS has a singular pixel-scale matrix") from error
     if not np.all(np.isfinite(sky_to_pix)):
-        raise ValueError(
-            "The celestial WCS pixel-scale matrix has a non-finite inverse"
-        )
+        raise ValueError("The celestial WCS pixel-scale matrix has a non-finite inverse")
 
     with np.errstate(over="ignore", invalid="ignore", under="ignore"):
         cov = sky_to_pix @ kernel_sky @ sky_to_pix.T
@@ -221,9 +205,7 @@ def nan_interpolation_kernel(
             would be larger than the maximum supported array size.
     """
     pad_sigma = _validate_pad_sigma(pad_sigma)
-    covariance_xy = _validate_covariance(
-        covariance_xy, "NaN interpolation covariance"
-    )
+    covariance_xy = _validate_covariance(covariance_xy, "NaN interpolation covariance")
     eigenvalues = np.linalg.eigvalsh(covariance_xy)
     sigma_max = np.sqrt(max(float(eigenvalues.max()), 0.0))
     if sigma_max <= 0:
@@ -232,9 +214,7 @@ def nan_interpolation_kernel(
             "kernel is available"
         )
     if eigenvalues.min() <= 0:
-        raise ValueError(
-            "The NaN interpolation covariance must be positive definite"
-        )
+        raise ValueError("The NaN interpolation covariance must be positive definite")
 
     with np.errstate(over="ignore"):
         half_size = max(float(np.ceil(pad_sigma * sigma_max)), 1.0)
@@ -251,9 +231,7 @@ def nan_interpolation_kernel(
     try:
         inv_cov = np.linalg.inv(covariance_xy)
     except np.linalg.LinAlgError as error:
-        raise ValueError(
-            "The NaN interpolation covariance must be positive definite"
-        ) from error
+        raise ValueError("The NaN interpolation covariance must be positive definite") from error
     exponent = -0.5 * np.einsum("...i,ij,...j->...", coords, inv_cov, coords)
     kernel = np.exp(exponent)
     kernel /= kernel.sum()
@@ -274,9 +252,7 @@ def transfer_function(
     Returns:
         np.ndarray: The transfer function in Fourier space.
     """
-    covariance_xy = _validate_covariance(
-        covariance_xy, "Fourier transfer covariance"
-    )
+    covariance_xy = _validate_covariance(covariance_xy, "Fourier transfer covariance")
     ny, nx = shape_yx
     fx = np.fft.rfftfreq(nx)
     fy = np.fft.fftfreq(ny)
@@ -474,5 +450,3 @@ def do_convolution(
         cube_slice_conv = cube_slice_conv.astype(image_slice.dtype)
 
     return cube_slice_conv
-
-
