@@ -342,12 +342,14 @@ def do_convolution(
     nan_treatment: str = "interpolate",
     preserve_nan: bool = False,
 ) -> np.ndarray:
-    """Perform the actual convolution.
+    """Convolve a single 2D image to a round Gaussian beam.
+
+    This works on one image at a time. To convolve a full cube, use
+    :func:`~convolve_uv.convolve_uv.convolve_uv`, which calls this for each channel.
 
     Args:
-        image_slice (Projection | SpectralCube): Either a full SpectralCube instance,
-            or a projection of a full 3D SpectralCube. If a full SpectralCube, then the
-            cube should only have two dimensions
+        image_slice (Projection): A 2D image, such as a channel slice of a
+            ``SpectralCube`` (``cube[0]``) or a ``Projection``. A cube is not accepted.
         target_beam (Beam): The desired circular beam to convolve to.
         boundary (str, optional): ``'wrap'`` applies periodic boundary conditions.
             ``'fill'`` pads the image to reduce wraparound effects and excludes the
@@ -377,7 +379,7 @@ def do_convolution(
             were originally NaN again become NaN? Defaults to False.
 
     Returns:
-        np.ndarray: The convolved image_slice
+        np.ndarray: The convolved image, with the same shape and dtype as ``image_slice``.
     """
     # Check beams are as we expect
     try:
