@@ -2,7 +2,7 @@ import datetime
 import os
 import sys
 import tomllib
-from importlib.metadata import version
+from importlib.metadata import version as package_version
 from pathlib import Path
 
 # Configuration file for the Sphinx documentation builder.
@@ -25,14 +25,12 @@ project = metadata["name"]
 author = metadata["authors"][0]["name"]
 copyright = f"{datetime.datetime.now(tz=datetime.UTC).year}, {author}"
 
-__version__ = version(project)
-try:
-    version = __version__.split("-", 1)[0]
-    release = __version__
-except AttributeError:
-    version = "dev"
-    release = "dev"
-    
+# The version of the installed package, which setuptools_scm derives from the latest
+# ``v*`` git tag. ``release`` is the full version (e.g. "0.3.1.dev24+g5021eba2e"), and
+# ``version`` the short X.Y form that Sphinx expects (e.g. "0.3").
+release = package_version(project)
+version = ".".join(release.split(".")[:2])
+
 sys.path.append(str(package_dir))
 
 # -- General configuration ---------------------------------------------------

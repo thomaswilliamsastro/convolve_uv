@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Select the `-cov` tox environments in the `tox-gh` mapping, and fail the test job if the coverage or JUnit reports are missing (#31).
 - Install `tox-uv` alongside `tox-gh` in CI so each test job runs only the tox environments for its own Python version, instead of every job re-provisioning tox and running the entire environment list (#33).
 - Gate the PyPI upload on the full test matrix, run as a reusable workflow on release tags, and fail the release build if the tag does not match the built package version (#34).
+- Derive the package version from the latest `v*` git tag with `setuptools_scm` instead of a hard-coded value in `pyproject.toml`, so `convolve_uv.__version__` and the documentation's version are correct (the former was always `"dev"`) and releasing is just tagging. The generated `convolve_uv/version.py` is git-ignored, builds without git metadata fall back to `0.0.0+unknown`, and the build and publish workflows check out full history (#35).
 
 ### Updated
 
