@@ -1,7 +1,7 @@
 [project]
 
 name = "convolve_uv"
-version = "0.3.0"
+dynamic = ["version"]
 description = "Perform Gaussian convolution directly in the uv-plane"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -70,5 +70,8 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
-# Configure custom options here (version schemes, file writing, etc.)
+# The version comes from the latest ``v*`` git tag (e.g. tag ``v0.4.0`` releases 0.4.0),
+# so releasing means tagging, not editing this file.
 version_file = "convolve_uv/version.py"
+# Used when no git metadata is available (e.g. building from a GitHub source archive).
+fallback_version = "0.0.0+unknown"
