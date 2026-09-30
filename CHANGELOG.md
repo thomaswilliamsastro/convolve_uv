@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add a `show_progress` keyword to `convolve_uv` (default `True`, so nothing changes unless it is used). `show_progress=False` draws no progress bar when convolving a cube. The bar was always created, and on a terminal it installs a `SIGWINCH` signal handler, which Python only allows in the main thread, so calling `convolve_uv` on a cube from a worker thread (a thread pool, a web server) failed with `ValueError: signal only works in main thread of the main interpreter`. Off a terminal the bar was already silent, so the failure only appeared when the same code was run interactively. The keyword is ignored for a `Projection`, which has no bar (#52).
+
 ### Changed
 
 - Run the `lint`, `typecheck`, `docs` and `wheel` tox environments once, in a dedicated `checks` job on Ubuntu, instead of in each of the three Python 3.14 test jobs (one per OS), where they gave the same result three times. They run in parallel with the test matrix, and the required `Test` check now passes only if both the test matrix and the `checks` job do. The slowest test job, which set the time a pull request's CI takes, no longer carries them. Running `tox` locally still runs every environment (#49).
