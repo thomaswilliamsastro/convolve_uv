@@ -62,9 +62,9 @@ docs = [
 
 [build-system]
 requires = [
-    "setuptools == 84.0.0",
-    "wheel == 0.48.0",
-    "setuptools_scm == 10.3.4",
+    # 70.1 is the first release that builds wheels without the separate "wheel" package
+    "setuptools >= 70.1",
+    "setuptools_scm >= 8.0",
 ]
 
 build-backend = "setuptools.build_meta"

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Relax the exact build-requirement pins to minimum versions (`setuptools >= 70.1`, `setuptools_scm >= 8.0`) and drop the unneeded `wheel` requirement. Exact pins make it harder for downstream packagers and users with constraints to build from source. These minimums are the oldest versions tested (older `setuptools` also needs the separate `wheel` package) (#39).
+
 ### Fixed
 
 - Raise a clear `ValueError` instead of attempting an enormous allocation when the padded image (for a huge `pad_sigma`, or a target beam far wider than the pixel scale) or the NaN interpolation kernel would exceed 2**28 pixels per array. Previously such requests ran effectively forever or exhausted memory (#38).
