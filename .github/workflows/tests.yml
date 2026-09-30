@@ -42,9 +42,18 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: Install tox
+        # tox-uv must be installed alongside tox-gh: tox.ini lists it under
+        # `requires`, and without it tox re-provisions itself in a fresh
+        # environment that does not have tox-gh, so every matrix job runs
+        # the entire envlist instead of just its own Python version.
         run: |
-          uv tool install --python ${{ matrix.python-version }} tox --with tox-gh
+          uv tool install --python ${{ matrix.python-version }} tox --with tox-gh --with tox-uv
       - name: Run tests
+        # tox-gh picks the tox environments from the `python` found on PATH,
+        # which here is the runner's default interpreter rather than the
+        # matrix version, so state the matrix version explicitly.
+        env:
+          TOX_GH_MAJOR_MINOR: ${{ matrix.python-version }}
         run: tox
       - name: Verify coverage and test reports were produced
         # Codecov silently uploads nothing if no report exists, so fail here
