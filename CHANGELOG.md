@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Stop shipping the test suite in the wheel: only the `convolve_uv` package is installed (package discovery is now explicit, with `include-package-data = false` and `convolve_uv.tests` excluded). The tests remain in the sdist and the repository. This means `pytest --pyargs convolve_uv` no longer finds tests in an installed wheel. List `pytest >= 9.0` explicitly in the `test` extra instead of relying on it arriving through `pytest-cov`, and add a `wheel` tox environment, run in CI, that uses `check-wheel-contents` to verify the built wheel contains exactly the package files and not the tests (#41).
 - Declare the license as the SPDX expression `GPL-3.0-or-later` with `license-files` (PEP 639), replacing the deprecated `license = {file = ...}` table and the `License ::` classifier. The published metadata previously embedded the full licence text in its `License` field. The license is unchanged: the expression matches the existing "GPLv3+" classifier. Raises the minimum `setuptools` to 77.0.1, the first release with PEP 639 support (#40).
 - Relax the exact build-requirement pins to minimum versions (`setuptools >= 77.0.1`, `setuptools_scm >= 8.0`) and drop the unneeded `wheel` requirement. Exact pins make it harder for downstream packagers and users with constraints to build from source. These minimums are the oldest versions tested (older `setuptools` also needs the separate `wheel` package) (#39).
 
