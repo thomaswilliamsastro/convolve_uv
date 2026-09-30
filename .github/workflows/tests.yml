@@ -81,14 +81,33 @@ jobs:
           report_type: "test_results"
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  # These give the same result on every OS, so they run once here instead of in
+  # every test job. Running `tox` locally still runs them all.
+  checks:
+    name: Checks (lint, typecheck, docs, wheel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Install tox
+        # tox-uv is needed because tox.ini lists it under `requires`; tox-gh is not,
+        # as the environments are named explicitly below.
+        run: |
+          uv tool install --python 3.14 tox --with tox-uv
+      - name: Run the checks
+        run: tox -e lint,typecheck,docs,wheel
+
+  # The required "Test" status check: it passes only if both the test matrix and
+  # the checks do.
   test-status:
     name: Test
-    needs: test
+    needs: [test, checks]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Verify test matrix
-        if: needs.test.result != 'success'
+      - name: Verify the test matrix and the checks
+        if: needs.test.result != 'success' || needs.checks.result != 'success'
         run: |
-          echo "::error::One or more test matrix jobs did not succeed."
+          echo "::error::One or more test matrix jobs or checks did not succeed."
           exit 1
