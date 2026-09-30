@@ -51,7 +51,7 @@ jobs:
           fi
 
       # Add changelog entry
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.head_ref }}
           # The git credentials set up here are what the commit action below pushes with
@@ -63,6 +63,6 @@ jobs:
           activationLabels: dependencies
           changelogPath: 'CHANGELOG.md'
           dependencyTool: dependabot
-      - uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7
+      - uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7.2.0
         with:
           commit_message: "Updated Changelog"
