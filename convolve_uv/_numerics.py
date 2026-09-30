@@ -28,6 +28,12 @@ FWHM_TO_SIGMA = 1.0 / np.sqrt(8.0 * np.log(2.0))
 # exhaust memory or run effectively forever.
 _MAX_ARRAY_ELEMENTS = 2**28
 
+# A NaN is only interpolated if at least this fraction of the kernel's weight falls on
+# valid pixels. Below that the nearest valid data is about five kernel widths away, which
+# is too far to say anything about the missing value (and the weighted mean is lost in
+# floating-point noise), so the pixel is left as NaN and excluded from the convolution.
+_MIN_INTERPOLATION_WEIGHT = 1e-6
+
 
 def _validate_pad_sigma(pad_sigma: float) -> float:
     """Return ``pad_sigma`` as a finite, non-negative float.
@@ -293,6 +299,40 @@ def fft_filter(
     return data_fft_filtered
 
 
+def _interpolate_nans(data: np.ndarray, covariance_xy: np.ndarray) -> np.ndarray:
+    """Replace the NaNs in a 2D array by a kernel-weighted mean of the valid pixels around them.
+
+    The weights come from the Gaussian with the given pixel-space covariance, and
+    only valid pixels inside the image count: the outside of the image is treated as
+    missing data, not as zeros, so a NaN at an edge or in a corner is interpolated
+    from its valid neighbours without being pulled towards zero.
+
+    Args:
+        data (np.ndarray): The 2D array, possibly containing NaNs.
+        covariance_xy (np.ndarray): The 2x2 covariance matrix of the interpolation
+            kernel in pixel (x, y) coordinates.
+
+    Returns:
+        np.ndarray: A copy of ``data`` with its NaNs replaced where there is valid data
+        within reach of the kernel, and left as NaN where there is not.
+    """
+    kernel = nan_interpolation_kernel(covariance_xy)
+
+    # astropy gives the padding around the image a weight of 1 (valid data) for any
+    # finite fill_value, which biases the result towards that value near the edges.
+    # A non-finite fill_value gives it a weight of 0, so it is ignored. Likewise
+    # min_wt keeps a NaN with no valid data in reach as NaN instead of setting it to 0.
+    interpolated: np.ndarray = interpolate_replace_nans(
+        data,
+        kernel,
+        convolve=convolve_fft,
+        boundary="fill",
+        fill_value=np.nan,
+        min_wt=_MIN_INTERPOLATION_WEIGHT,
+    )
+    return interpolated
+
+
 def do_convolution(
     image_slice: Projection,
     target_beam: Beam,
@@ -324,11 +364,13 @@ def do_convolution(
         nan_treatment (str, optional): The method used to handle NaNs in the input slice:
 
             * ``interpolate`` (default): ``NaN`` values are replaced with interpolated
-              values using the kernel as an interpolation function. Note that
-              if the kernel has a sum equal to zero, NaN interpolation is not
-              possible and will raise an exception. If the input and target beams
-              are identical, the data are returned unchanged because no
-              interpolation kernel is available.
+              values using the kernel as an interpolation function. Only valid pixels
+              inside the image are used. A ``NaN`` with no valid data within reach of
+              the kernel (about five kernel widths) stays ``NaN`` and is excluded from
+              the convolution. Note that if the kernel has a sum equal to zero, NaN
+              interpolation is not possible and will raise an exception. If the input
+              and target beams are identical, the data are returned unchanged because
+              no interpolation kernel is available.
             * ``fill``: ``NaN`` values are replaced by ``fill_value`` prior to
               convolution.
         preserve_nan (bool, optional): After performing convolution, should pixels that
@@ -388,12 +430,7 @@ def do_convolution(
     if nan_treatment == "fill":
         data = np.where(np.isfinite(data), data, fill_value)
     else:
-        interpolation_kernel = nan_interpolation_kernel(covariance)
-        data = interpolate_replace_nans(
-            data,
-            interpolation_kernel,
-            convolve=convolve_fft,
-        )
+        data = _interpolate_nans(data, covariance)
 
     # Keep track of where pixels are valid
     valid = mask & np.isfinite(data)

@@ -10,6 +10,7 @@ from radio_beam.utils import BeamError
 from spectral_cube import SpectralCube, VaryingResolutionSpectralCube, cube_utils
 
 from .._numerics import (
+    _interpolate_nans,
     beam_covariance_en,
     do_convolution,
     kernel_covariance_pixels,
@@ -1331,3 +1332,130 @@ class TestArraySizeLimits:
         result_data = result.unmasked_data[:].value if operation == "convolve_uv" else result
 
         assert np.all(np.isfinite(result_data))
+
+
+def _weighted_mean_of_valid_neighbours(data: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+    """Interpolate NaNs with plain loops, as a reference for the FFT-based version.
+
+    Each NaN becomes the kernel-weighted mean of the valid pixels around it. Pixels
+    outside the image are not data, so they are not counted.
+
+    Args:
+        data (np.ndarray): The 2D array, containing NaNs.
+        kernel (np.ndarray): The square, odd-sized interpolation kernel.
+    """
+    half = kernel.shape[0] // 2
+    ny, nx = data.shape
+    result = data.copy()
+    for y, x in zip(*np.where(np.isnan(data)), strict=True):
+        weighted_sum = total_weight = 0.0
+        for dy in range(-half, half + 1):
+            for dx in range(-half, half + 1):
+                yy, xx = y + dy, x + dx
+                if 0 <= yy < ny and 0 <= xx < nx and np.isfinite(data[yy, xx]):
+                    weight = kernel[half + dy, half + dx]
+                    weighted_sum += weight * data[yy, xx]
+                    total_weight += weight
+        result[y, x] = weighted_sum / total_weight if total_weight > 0 else np.nan
+    return result
+
+
+NAN_LAYOUTS = {
+    "centre": [(10, 10)],
+    "edge": [(0, 10)],
+    "corner": [(0, 0)],
+    "corner block": [(0, 0), (0, 1), (1, 0), (1, 1)],
+}
+
+
+def _constant_slice(nan_pixels: list[tuple[int, int]], size: int = 21):
+    """Make a projection of an all-ones image with NaNs at the given pixels."""
+    cube = _create_test_cube(x_size=size, y_size=size, vel_size=1)
+    data = np.ones((1, size, size))
+    for y, x in nan_pixels:
+        data[0, y, x] = np.nan
+    cube = SpectralCube(data=data, wcs=cube.wcs, beam=cube.beam, allow_huge_operations=True)
+    return cube[0]
+
+
+class TestNanInterpolationEdges:
+    """NaNs at the edge of the image are interpolated from valid pixels only."""
+
+    TARGET_BEAM = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+    @pytest.mark.parametrize(
+        "covariance",
+        [np.eye(2) * 3.0**2, np.array([[9.0, 4.0], [4.0, 6.0]])],
+        ids=["round", "anisotropic rotated"],
+    )
+    def test_matches_weighted_mean_of_valid_pixels(self, covariance: np.ndarray):
+        """The interpolated values equal an independent weighted mean of valid pixels."""
+        rng = np.random.default_rng(1)
+        data = rng.normal(size=(21, 21)) + 5.0
+        nan_pixels = [(0, 0), (0, 7), (10, 10), (20, 20), (20, 3), (9, 0), (1, 1), (15, 16)]
+        for pixel in nan_pixels:
+            data[pixel] = np.nan
+
+        result = _interpolate_nans(data, covariance)
+        expected = _weighted_mean_of_valid_neighbours(data, nan_interpolation_kernel(covariance))
+
+        nan_mask = np.isnan(data)
+        assert np.allclose(result[nan_mask], expected[nan_mask], rtol=1e-9, atol=0.0)
+        assert np.array_equal(result[~nan_mask], data[~nan_mask])
+
+    @pytest.mark.parametrize("sigma", [2.0, 5.0, 10.0])
+    @pytest.mark.parametrize("layout", list(NAN_LAYOUTS))
+    def test_constant_image_stays_constant(self, layout: str, sigma: float):
+        """Interpolating a constant image gives that constant, wherever the NaNs are."""
+        data = np.ones((21, 21))
+        for pixel in NAN_LAYOUTS[layout]:
+            data[pixel] = np.nan
+
+        result = _interpolate_nans(data, np.eye(2) * sigma**2)
+
+        assert np.allclose(result, 1.0, rtol=0.0, atol=1e-9)
+
+    @pytest.mark.parametrize("boundary", BOUNDARY_KEYWORDS)
+    @pytest.mark.parametrize("layout", list(NAN_LAYOUTS))
+    def test_convolving_a_constant_image_with_nans_gives_the_constant(
+        self, layout: str, boundary: str
+    ):
+        """The convolved result is not darkened near NaNs at the image edge."""
+        image = _constant_slice(NAN_LAYOUTS[layout])
+
+        result = do_convolution(
+            image, self.TARGET_BEAM, boundary=boundary, nan_treatment="interpolate"
+        )
+
+        assert np.allclose(result, 1.0, rtol=0.0, atol=1e-6)
+
+    def test_nan_without_valid_data_in_reach_stays_nan(self):
+        """A NaN too far from any valid pixel is not filled with a value."""
+        data = np.ones((61, 61))
+        data[10:51, 10:51] = np.nan
+
+        result = _interpolate_nans(data, np.eye(2) * 2.0**2)
+
+        assert np.isnan(result[30, 30])
+        assert np.allclose(result[np.isfinite(result)], 1.0, rtol=0.0, atol=1e-9)
+
+    def test_an_all_nan_image_stays_nan(self):
+        """With no valid data at all nothing can be interpolated."""
+        result = _interpolate_nans(np.full((21, 21), np.nan), np.eye(2) * 2.0**2)
+
+        assert np.all(np.isnan(result))
+
+    def test_a_large_hole_is_not_filled_with_zeros(self):
+        """A hole bigger than the kernel's reach does not turn into zeros in the result."""
+        # With this beam the kernel sigma is about 3 px, so the centre of the 41 x 41
+        # hole, 20 px from the nearest valid pixel, is out of the interpolation's reach.
+        target_beam = Beam(major=1.0 * u.arcsec, minor=1.0 * u.arcsec, pa=0 * u.deg)
+        cube = _create_test_cube(x_size=61, y_size=61, vel_size=1)
+        data = np.ones((1, 61, 61))
+        data[0, 10:51, 10:51] = np.nan
+        cube = SpectralCube(data=data, wcs=cube.wcs, beam=cube.beam, allow_huge_operations=True)
+
+        result = do_convolution(cube[0], target_beam, nan_treatment="interpolate")
+
+        assert np.isfinite(result).any()
+        assert np.allclose(result[np.isfinite(result)], 1.0, rtol=0.0, atol=1e-6)
