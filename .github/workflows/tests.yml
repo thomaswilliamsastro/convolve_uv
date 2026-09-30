@@ -46,6 +46,12 @@ jobs:
           uv tool install --python ${{ matrix.python-version }} tox --with tox-gh
       - name: Run tests
         run: tox
+      - name: Verify coverage and test reports were produced
+        # Codecov silently uploads nothing if no report exists, so fail here
+        # instead of letting coverage reporting quietly stop working.
+        shell: bash
+        run: |
+          ls *-cov-coverage.xml *-cov-junit.xml
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7
         with:
