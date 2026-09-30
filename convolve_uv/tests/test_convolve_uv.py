@@ -2,6 +2,7 @@ import warnings
 
 import astropy.units as u
 import numpy as np
+import numpy.typing as npt
 import pytest
 from astropy.wcs import WCS
 from radio_beam import Beam, Beams
@@ -40,7 +41,7 @@ def _create_test_cube(
     unit: u.Unit | u.IrreducibleUnit = u.K,
     pix_scale: u.Quantity = 0.1 * u.arcsec,
     beam: Beam | None = DEFAULT_BEAM,
-    data_dtype: np.dtype = np.float32,
+    data_dtype: npt.DTypeLike = np.float32,
 ):
     """Set up a basic test cube for testing.
 
@@ -182,8 +183,8 @@ def _create_test_varying_resolution_cube(
         for i in range(vel_size)
     ]
     beams = Beams(beams=beams)
-    data = [b.as_kernel(pixscale=pix_scale, x_size=x_size, y_size=y_size).array for b in beams]
-    data = np.array(data)
+    kernels = [b.as_kernel(pixscale=pix_scale, x_size=x_size, y_size=y_size).array for b in beams]
+    data = np.array(kernels)
     data *= unit
 
     # Create a basic World Coordinate System (WCS)
