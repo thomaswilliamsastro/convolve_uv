@@ -6,6 +6,7 @@ filtering, interpolation kernel construction, and 2D convolution) lives in
 """
 
 import warnings
+from contextlib import nullcontext
 
 import numpy as np
 from astropy.utils.console import ProgressBar
@@ -40,6 +41,7 @@ def convolve_uv(
     pad_sigma: float = 8.0,
     nan_treatment: str = "interpolate",
     preserve_nan: bool = False,
+    show_progress: bool = True,
 ) -> Projection | SpectralCube:
     """Convolve a 2D projection to a round Gaussian beam exactly in uv space.
 
@@ -78,6 +80,12 @@ def convolve_uv(
               convolution.
         preserve_nan (bool, optional): After performing convolution, should pixels that
             were originally NaN again become NaN? Defaults to False.
+        show_progress (bool, optional): Show a progress bar while convolving the channels
+            of a cube. The bar is drawn on standard output, and only when that is a terminal
+            or an IPython console. Set this to ``False`` to draw nothing, which is required
+            when calling from a thread other than the main one (the bar installs a signal
+            handler, which Python only allows in the main thread). Ignored for a
+            ``Projection``, which has no bar. Defaults to True.
 
     Returns:
         Projection | SpectralCube: The convolved Projection or SpectralCube
@@ -129,7 +137,7 @@ def convolve_uv(
                 "The celestial WCS is invalid or singular and cannot be prepared for convolution"
             ) from error
 
-        with ProgressBar(n_chan) as bar:
+        with ProgressBar(n_chan) if show_progress else nullcontext() as bar:
             for chan in range(n_chan):
                 data_conv[chan] = do_convolution(
                     image_copy[chan],
@@ -140,7 +148,8 @@ def convolve_uv(
                     nan_treatment=nan_treatment,
                     preserve_nan=preserve_nan,
                 )
-                bar.update()
+                if bar is not None:
+                    bar.update()
 
         # If we're a VaryingResolutionSpectralCube, then we need to return a
         # SpectralCube with the new beam

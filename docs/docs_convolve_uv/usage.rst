@@ -42,3 +42,19 @@ do the following:
     emits a ``convolve_uv.LargeCubeMemoryWarning`` rather than raising an error. Your cube is
     never modified, including its ``allow_huge_operations`` attribute, and the convolved cube
     keeps the same ``allow_huge_operations`` setting as the cube you passed in.
+
+Progress bar
+------------
+
+When passed a full cube, ``convolve_uv`` shows a progress bar while it convolves the channels,
+but only if standard output is a terminal or an IPython console. To draw nothing, pass
+``show_progress=False``:
+
+.. code-block:: python
+
+    convolved_cube = convolve_uv(cube, target_beam, show_progress=False)
+
+Do this when calling ``convolve_uv`` from a thread other than the main one (for example from
+a thread pool, or a web server): the progress bar installs a signal handler, which Python only
+allows in the main thread, so on a terminal the call fails with
+``ValueError: signal only works in main thread of the main interpreter``.
