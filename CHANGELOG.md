@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ignore tox-generated coverage and JUnit report files (#15).
 - Harden GitHub Actions workflow and Dependabot security: least-privilege permissions, PyPI Trusted Publishing (OIDC), SHA-pinned third-party actions, and consistent job/step naming (#20).
 - Document core dependency minimums, test minimum and latest compatible dependency sets in CI for every supported Python version, and separate core runtime Dependabot updates (#23).
+- Split numerical convolution helpers (beam/pixel covariance, transfer functions, FFT filtering, interpolation kernel construction, 2D convolution) into a new `convolve_uv._numerics` module, separate from the `convolve_uv()` orchestration over `SpectralCube`/`Projection`. Public behavior, signatures, import paths, exports, and error/warning semantics are unchanged (#32).
 
 ### Dependencies
 - Bump `setuptools-scm` from 10.2.3 to 10.3.4 ([#24](https://github.com/thomaswilliamsastro/convolve_uv/pull/24))
