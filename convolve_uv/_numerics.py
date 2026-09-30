@@ -21,6 +21,13 @@ from spectral_cube.utils import NoBeamError
 
 FWHM_TO_SIGMA = 1.0 / np.sqrt(8.0 * np.log(2.0))
 
+# Upper bound on the number of elements in any single 2D array sized from
+# ``pad_sigma`` or from the kernel width: 2**28 float64 elements is 2 GiB per
+# array (e.g. a padded 16384 x 16384 image). Anything larger is rejected up
+# front with a clear error, rather than attempting an allocation that can
+# exhaust memory or run effectively forever.
+_MAX_ARRAY_ELEMENTS = 2**28
+
 
 def _validate_pad_sigma(pad_sigma: float) -> float:
     """Return ``pad_sigma`` as a finite, non-negative float.
@@ -36,6 +43,22 @@ def _validate_pad_sigma(pad_sigma: float) -> float:
     if not np.isfinite(pad_sigma) or pad_sigma < 0:
         raise ValueError("pad_sigma must be a finite, non-negative number")
     return pad_sigma
+
+
+def _check_array_size(elements: float, description: str, advice: str) -> None:
+    """Raise if an array of ``elements`` elements would exceed the size limit.
+
+    ``elements`` is a float so that arbitrarily large (even overflowing) sizes
+    can be compared without first allocating anything.
+
+    Raises:
+        ValueError: If ``elements`` is greater than the maximum array size.
+    """
+    if elements > _MAX_ARRAY_ELEMENTS:
+        raise ValueError(
+            f"{description} would need about {elements:.3g} elements, which exceeds "
+            f"the limit of {_MAX_ARRAY_ELEMENTS} elements per array. {advice}"
+        )
 
 
 # Normalize covariance inputs and reject invalid matrices before linear algebra.
@@ -193,6 +216,10 @@ def nan_interpolation_kernel(
 
     Returns:
         np.ndarray: A square, odd-sized, unit-sum 2D Gaussian kernel array.
+
+    Raises:
+        ValueError: If the covariance is invalid or degenerate, or if the kernel
+            would be larger than the maximum supported array size.
     """
 
     pad_sigma = _validate_pad_sigma(pad_sigma)
@@ -211,7 +238,15 @@ def nan_interpolation_kernel(
             "The NaN interpolation covariance must be positive definite"
         )
 
-    half_size = max(int(np.ceil(pad_sigma * sigma_max)), 1)
+    with np.errstate(over="ignore"):
+        half_size = max(float(np.ceil(pad_sigma * sigma_max)), 1.0)
+    _check_array_size(
+        (2.0 * half_size + 1.0) ** 2,
+        "The NaN interpolation kernel",
+        "Use nan_treatment='fill' to skip the kernel, or convolve to a target beam "
+        "closer to the image resolution.",
+    )
+    half_size = int(half_size)
     y, x = np.mgrid[-half_size : half_size + 1, -half_size : half_size + 1]
     coords = np.stack([x, y], axis=-1).astype(float)
 
@@ -309,7 +344,10 @@ def do_convolution(
         pad_sigma (float, optional): Number of kernel standard deviations to pad on each
             side when using ``boundary='fill'``. Ignored and not validated when
             ``boundary='wrap'``. For ``'fill'``, it must be finite and non-negative;
-            zero is allowed. Defaults to 8.0.
+            zero is allowed. Defaults to 8.0. The padded image (and, separately, the
+            NaN interpolation kernel) may not exceed 2**28 pixels; larger sizes raise
+            a ``ValueError``, for example when convolving to a beam far wider than
+            the pixel scale.
         nan_treatment (str, optional): The method used to handle NaNs in the input slice:
 
             * ``interpolate`` (default): ``NaN`` values are replaced with interpolated
@@ -391,8 +429,17 @@ def do_convolution(
     pad_y = pad_x = 0
     if boundary == "fill":
         # Marginal standard deviations give a conservative axis-wise pad.
-        pad_x = int(np.ceil(pad_sigma * np.sqrt(covariance[0, 0])))
-        pad_y = int(np.ceil(pad_sigma * np.sqrt(covariance[1, 1])))
+        with np.errstate(over="ignore"):
+            pad_x = float(np.ceil(pad_sigma * np.sqrt(covariance[0, 0])))
+            pad_y = float(np.ceil(pad_sigma * np.sqrt(covariance[1, 1])))
+        _check_array_size(
+            (data.shape[-2] + 2.0 * pad_y) * (data.shape[-1] + 2.0 * pad_x),
+            "The padded image",
+            "Reduce pad_sigma, use boundary='wrap', or convolve to a target beam "
+            "closer to the image resolution.",
+        )
+        pad_x = int(pad_x)
+        pad_y = int(pad_y)
         pad_width = [(0, 0)] * (data.ndim - 2) + [(pad_y, pad_y), (pad_x, pad_x)]
         data = np.pad(data, pad_width, mode="constant", constant_values=fill_value)
         valid = np.pad(valid, pad_width, mode="constant", constant_values=False)
