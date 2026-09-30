@@ -1,15 +1,54 @@
 # Dependabot auto-merge
 
-`.github/workflows/dependabot-auto-merge.yml` automatically approves
-Dependabot pull requests and enables GitHub's native auto-merge for them.
-It never merges anything itself and never bypasses required checks or
-reviews - it only:
+`.github/workflows/dependabot-auto-merge.yml` enables GitHub's native
+auto-merge for Dependabot pull requests that are **low-risk**, and makes sure
+it is off for every other one. It never merges anything itself and never
+bypasses the `main` ruleset: GitHub performs the actual merge, and only once
+**all** required status checks pass. Everything it does not enable stays a
+normal PR for a maintainer to review and merge.
 
-1. Approves the pull request (`gh pr review --approve`), and
-2. Enables auto-merge (`gh pr merge --auto --squash`).
+## What gets auto-merged
 
-GitHub itself performs the actual merge, and only once **all** required
-status checks pass and all required reviews are satisfied.
+Only **patch and minor updates of Python development dependencies**, and only
+if *every* dependency in the PR qualifies:
+
+| Update | Auto-merged? | Why |
+|---|---|---|
+| Patch/minor of a development dependency (pytest, ruff, mypy, sphinx, setuptools, setuptools_scm, ...) | yes | Only affects CI and the build; the required checks cover it |
+| Any **major** update | no | Can break things in ways the tests do not cover |
+| Runtime dependencies (astropy, numpy, radio-beam, spectral-cube) | no | For a library, raising a dependency's minimum version changes what its users can install alongside it |
+| GitHub Actions, including patch/minor | no | Third-party actions are pinned to commit SHAs so that updates are a deliberate choice; auto-merging the bump would defeat that (a compromised release would run in CI and, at release time, next to the PyPI publish step) |
+
+History shows why the gate exists: PR #30 bumped `astral-sh/setup-uv` from 7.6.0
+to 10.2.0, a **major** update of a third-party action, and went through the
+previous workflow automatically.
+
+`dependabot.yml` puts major updates of the non-runtime dependencies in their
+own PRs (only minor and patch updates are grouped), so one major update cannot
+hold back the minor and patch updates that are eligible.
+
+## How each run decides
+
+Every run (when a PR is opened, reopened or pushed to, by anyone) does this and
+writes the verdict and a table of the dependencies to the job summary:
+
+1. **Metadata.** `dependabot/fetch-metadata` reads the update details (package
+   ecosystem, dependency type, update type) from Dependabot's *first* commit,
+   which it checks is Dependabot's own and signed.
+2. **Policy.** Every dependency must be a `pip` development dependency with a
+   patch or minor update. If the metadata cannot be read, the PR is not
+   eligible.
+3. **Later commits.** `fetch-metadata` does not look beyond the first commit,
+   and auto-merge merges whatever the branch head is, so this workflow checks
+   them itself: each later commit must be either a signed Dependabot commit or
+   change nothing but `CHANGELOG.md` (the changelog bot's commit). Any other
+   commit, for example a stray push to the branch, makes the PR ineligible.
+
+An eligible PR gets `gh pr merge --auto --squash`. For an ineligible one, the
+workflow turns auto-merge **off** if it was on, for example because Dependabot
+later added a major update to a group, or an unexpected commit appeared.
+
+To change the policy, edit the `Decide whether the update is low-risk` step.
 
 ## Why `pull_request`, not `pull_request_target`
 
@@ -23,26 +62,17 @@ job doesn't need to build or test the code (that's what `tests.yml` /
 
 ## Required repository settings
 
-For this workflow to work, the following repository settings must be
-enabled (Dependabot pull requests already satisfy the "same repo, not a
-fork" assumption these rely on):
-
-- **Settings → Actions → General → Workflow permissions →
-  "Allow GitHub Actions to create and approve pull requests"** must be
-  checked. Without this, `gh pr review --approve` fails with
-  `GitHub Actions is not permitted to approve pull requests`.
 - **Settings → General → Pull Requests → "Allow auto-merge"** must be
   enabled for the repository. Without this, `gh pr merge --auto` fails.
-- **Branch protection on `main`** should require the status checks this
-  repository already runs on pull requests (e.g. `Test`, `Build`,
-  `Check Changelog`) before merging, so GitHub's auto-merge cannot
-  complete until they pass. If branch protection requires **more than
-  one** approving review, a single automated approval from this workflow
-  will not be sufficient on its own to satisfy the rule.
-- Do not enable "Require approval of the most recent push" together with
-  a policy that forbids the same actor from approving; this workflow's
-  approver is `github-actions[bot]`, distinct from the PR author
-  (`dependabot[bot]`), so self-approval restrictions are not a concern.
+- **The `main` ruleset** must require the status checks this repository
+  already runs on pull requests (`Test`, `Build`, `Check Changelog`), so
+  GitHub's auto-merge cannot complete until they pass.
+- The ruleset currently requires **0 approving reviews**, which is why this
+  workflow no longer approves anything (the old "approve" step was a no-op). If
+  you ever require reviews, auto-merge will wait for a human approval.
+- **"Allow GitHub Actions to create and approve pull requests"** (Settings →
+  Actions → General) is no longer needed by this workflow and can be turned
+  off.
 
 This workflow uses no personal access token or extra secret - only the
 default `GITHUB_TOKEN`, scoped narrowly to `pull-requests: write` and
@@ -100,11 +130,10 @@ Dependabot-authored PRs only. That job does not run code from the PR: it
 checks out the branch and runs two third-party actions, both pinned to a
 commit SHA. Keep the token's scope as narrow as above.
 
-### Approvals
+### The decision and the changelog commit
 
-If branch protection dismisses stale reviews on push, the changelog commit
-could invalidate this workflow's earlier approval. `dependabot-auto-merge.yml`
-re-runs on every `synchronize` event for the PR (including the one caused by
-the changelog commit) and re-approves each time, so the PR is never left
-stuck waiting on a dismissed review. Auto-merge itself, once enabled,
-persists across new commits and does not need to be re-enabled.
+The changelog commit arrives after Dependabot's own, and pushing it (with the
+token above) starts this workflow again. That is expected: it is the kind of
+later commit the workflow allows (it changes only `CHANGELOG.md`), so the PR
+stays eligible and auto-merge stays on. Auto-merge, once enabled, persists
+across new commits and does not need to be re-enabled.
