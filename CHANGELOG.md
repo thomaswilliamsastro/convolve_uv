@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Raise a clear `ValueError` instead of attempting an enormous allocation when the padded image (for a huge `pad_sigma`, or a target beam far wider than the pixel scale) or the NaN interpolation kernel would exceed 2**28 pixels per array. Previously such requests ran effectively forever or exhausted memory (#38).
 - Read `convolve_uv.__version__` from the installed package metadata instead of a generated `convolve_uv/version.py`, which no longer needs to be written. The old import left the fallback branch uncovered whenever a build had generated that file, so coverage was incomplete; `__init__.py` is now fully covered, with tests for both the installed and uninstalled cases (#37).
 
 ## [0.4.0] - 2026-09-30

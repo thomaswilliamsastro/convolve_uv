@@ -1301,3 +1301,84 @@ class TestConvolveUV:
         assert cube_conv.beam == common_beam
         assert np.all(np.isfinite(res))
         assert np.allclose(res, analytic_kernel[np.newaxis, ...], atol=2e-3)
+
+
+class TestArraySizeLimits:
+    """Absurdly large padding or kernel sizes are rejected before allocating"""
+
+    WIDE_BEAM = Beam(major=1e5 * u.arcsec, minor=1e5 * u.arcsec, pa=0 * u.deg)
+    ROUND_BEAM = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+    @staticmethod
+    def _convolve(operation: str, **kwargs):
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        if operation == "convolve_uv":
+            return convolve_uv(image=cube, **kwargs)
+        return do_convolution(image_slice=cube[0], **kwargs)
+
+    @pytest.mark.parametrize("operation", ["convolve_uv", "do_convolution"])
+    @pytest.mark.parametrize("pad_sigma", [1e6, 1e308])
+    def test_huge_pad_sigma_is_rejected(self, operation: str, pad_sigma: float):
+        """A huge (even overflowing) pad_sigma raises a clear error, not a MemoryError"""
+
+        with pytest.raises(ValueError, match="The padded image would need about"):
+            self._convolve(
+                operation,
+                target_beam=self.ROUND_BEAM,
+                boundary="fill",
+                nan_treatment="fill",
+                pad_sigma=pad_sigma,
+            )
+
+    @pytest.mark.parametrize("operation", ["convolve_uv", "do_convolution"])
+    def test_wide_beam_padding_is_rejected(self, operation: str):
+        """A beam far wider than the pixel scale makes the padded image too large"""
+
+        with pytest.raises(ValueError, match="The padded image would need about"):
+            self._convolve(
+                operation,
+                target_beam=self.WIDE_BEAM,
+                boundary="fill",
+                nan_treatment="fill",
+            )
+
+    @pytest.mark.parametrize("operation", ["convolve_uv", "do_convolution"])
+    @pytest.mark.parametrize("boundary", BOUNDARY_KEYWORDS)
+    def test_wide_beam_nan_kernel_is_rejected(self, operation: str, boundary: str):
+        """A beam far wider than the pixel scale makes the NaN kernel too large,
+        and this does not depend on pad_sigma or the boundary"""
+
+        with pytest.raises(
+            ValueError, match="The NaN interpolation kernel would need about"
+        ):
+            self._convolve(
+                operation,
+                target_beam=self.WIDE_BEAM,
+                boundary=boundary,
+                nan_treatment="interpolate",
+                pad_sigma=0,
+            )
+
+    def test_nan_interpolation_kernel_size_limit(self):
+        """The limit is enforced by the kernel builder itself"""
+
+        with pytest.raises(
+            ValueError, match="The NaN interpolation kernel would need about"
+        ):
+            nan_interpolation_kernel(np.eye(2) * 1e8)
+
+    @pytest.mark.parametrize("operation", ["convolve_uv", "do_convolution"])
+    def test_wide_beam_without_padding_or_kernel_is_allowed(self, operation: str):
+        """The limit only applies to arrays that are actually allocated"""
+
+        result = self._convolve(
+            operation,
+            target_beam=self.WIDE_BEAM,
+            boundary="wrap",
+            nan_treatment="fill",
+        )
+        result_data = (
+            result.unmasked_data[:].value if operation == "convolve_uv" else result
+        )
+
+        assert np.all(np.isfinite(result_data))
