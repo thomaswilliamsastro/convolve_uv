@@ -13,7 +13,7 @@ on:
     branches:
       - main
 
-# Read-only: the action only inspects the PR diff, it never needs write access.
+# Read-only: the job only inspects the PR diff, it never needs write access.
 permissions:
   contents: read
 
@@ -26,6 +26,39 @@ jobs:
     name: Check Changelog
     runs-on: ubuntu-latest
     steps:
-      - uses: tarides/changelog-check-action@8f47e0becbfa549e4c82a3f562aa6f90d2c2ee8c # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          changelog: CHANGELOG.md
+          # Full history, so that the base branch is available to diff against
+          fetch-depth: 0
+
+      # This used to be tarides/changelog-check-action, which runs an unpinned
+      # actions/checkout@v7 internally. The repository requires every action,
+      # including nested ones, to be pinned to a commit SHA, so that action
+      # made this check fail on every pull request.
+      - name: Check that CHANGELOG.md was updated
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          NO_CHANGELOG_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'no changelog') }}
+        run: |
+          set -uo pipefail
+          if [ "$NO_CHANGELOG_LABEL" = "true" ]; then
+            echo "The 'no changelog' label is set, so no changelog entry is needed."
+            exit 0
+          fi
+          # GitHub runs this with `bash -e`, so capture git's exit code (0: no
+          # difference, 1: a difference) instead of letting the 1 abort the script.
+          status=0
+          git diff --quiet "origin/$BASE_REF" -- CHANGELOG.md || status=$?
+          case $status in
+            0)
+              echo "::error file=CHANGELOG.md::This pull request does not change CHANGELOG.md. User-visible changes need an entry. Add the \"no changelog\" label for changes that are not user-visible."
+              exit 1
+              ;;
+            1)
+              echo "CHANGELOG.md was updated."
+              ;;
+            *)
+              echo "::error::Could not compare CHANGELOG.md with origin/$BASE_REF."
+              exit 1
+              ;;
+          esac
