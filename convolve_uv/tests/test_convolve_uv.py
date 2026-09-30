@@ -8,14 +8,13 @@ from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 from spectral_cube import SpectralCube, VaryingResolutionSpectralCube, cube_utils
 
-from ..convolve_uv import (
-    LargeCubeMemoryWarning,
+from .._numerics import (
     beam_covariance_en,
-    convolve_uv,
     do_convolution,
     kernel_covariance_pixels,
     nan_interpolation_kernel,
 )
+from ..convolve_uv import LargeCubeMemoryWarning, convolve_uv
 
 TEST_RESOLUTIONS = [
     None,
