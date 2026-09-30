@@ -1597,3 +1597,49 @@ class TestShowProgress:
 
         np.testing.assert_array_equal(shown.value, hidden.value)
         assert terminal.getvalue() == ""
+
+
+class TestCubeArgumentValidation:
+    @pytest.mark.parametrize(
+        ("kwargs", "error", "match"),
+        [
+            ({"boundary": "reflect"}, ValueError, "boundary must be"),
+            ({"pad_sigma": -1.0}, ValueError, "pad_sigma must be"),
+            ({"nan_treatment": "drop"}, ValueError, "nan_treatment must be"),
+            ({"target_beam": 1.5 * u.arcsec}, TypeError, "must be a Beam object"),
+        ],
+    )
+    def test_a_bad_argument_is_rejected_before_the_cube_is_touched(
+        self, monkeypatch, kwargs, error, match
+    ):
+        """A cube with a bad argument fails at once, not on its first channel.
+
+        The size warning is turned into an error and the per-channel convolution is
+        replaced by a recorder, so the call only raises the expected error if it is rejected
+        before the warning and before any channel is convolved.
+        """
+        module = sys.modules[convolve_uv.__module__]
+        calls = []
+        monkeypatch.setattr(module, "do_convolution", lambda *args, **kwargs: calls.append(1))
+        monkeypatch.setattr(cube_utils, "MEMORY_THRESHOLD", 1)
+        arguments = {
+            "target_beam": Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg),
+            **kwargs,
+        }
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", LargeCubeMemoryWarning)
+            with pytest.raises(error, match=match):
+                convolve_uv(_create_test_cube(vel_size=2), **arguments)
+
+        assert calls == []
+
+    def test_pad_sigma_is_not_checked_when_the_boundary_wraps(self):
+        """Shared validation still ignores pad_sigma for boundary='wrap', as documented."""
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+
+        result = convolve_uv(
+            _create_test_cube(vel_size=1), target_beam, boundary="wrap", pad_sigma=-1.0
+        )
+
+        assert result.shape[0] == 1

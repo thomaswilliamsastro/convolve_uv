@@ -51,6 +51,33 @@ def _validate_pad_sigma(pad_sigma: float) -> float:
     return pad_sigma
 
 
+def _validate_convolution_arguments(
+    target_beam: Beam, boundary: str, pad_sigma: float, nan_treatment: str
+) -> float:
+    """Check the arguments shared by ``convolve_uv`` and ``do_convolution``.
+
+    Both entry points call this, so that a bad argument gives the same error from either,
+    and ``convolve_uv`` can reject it before it touches a cube.
+
+    Returns:
+        float: ``pad_sigma`` as a float (unchanged when ``boundary='wrap'``, which ignores it).
+
+    Raises:
+        TypeError: If ``target_beam`` is not a ``Beam``.
+        ValueError: If ``boundary`` or ``nan_treatment`` is not one of its allowed values,
+            or ``pad_sigma`` is not finite and non-negative (checked only for ``'fill'``).
+    """
+    if not isinstance(target_beam, Beam):
+        raise TypeError("Input beam must be a Beam object")
+    if boundary not in {"fill", "wrap"}:
+        raise ValueError("boundary must be 'fill' or 'wrap'")
+    if boundary == "fill":
+        pad_sigma = _validate_pad_sigma(pad_sigma)
+    if nan_treatment not in {"interpolate", "fill"}:
+        raise ValueError("nan_treatment must be 'interpolate' or 'fill'")
+    return pad_sigma
+
+
 def _check_array_size(elements: float, description: str, advice: str) -> None:
     """Raise if an array of ``elements`` elements would exceed the size limit.
 
@@ -387,15 +414,7 @@ def do_convolution(
     except (AttributeError, NoBeamError) as error:
         raise AttributeError("image_slice must have a valid beam") from error
 
-    if not isinstance(target_beam, Beam):
-        raise TypeError("Input beam must be a Beam object")
-
-    if boundary not in {"fill", "wrap"}:
-        raise ValueError("boundary must be 'fill' or 'wrap'")
-    if boundary == "fill":
-        pad_sigma = _validate_pad_sigma(pad_sigma)
-    if nan_treatment not in {"interpolate", "fill"}:
-        raise ValueError("nan_treatment must be 'interpolate' or 'fill'")
+    pad_sigma = _validate_convolution_arguments(target_beam, boundary, pad_sigma, nan_treatment)
 
     # A zero-width kernel cannot interpolate missing values, so preserve them.
     if beam == target_beam:

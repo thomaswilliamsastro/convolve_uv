@@ -20,7 +20,7 @@ from spectral_cube import (
 )
 from spectral_cube.utils import SpectralCubeWarning
 
-from ._numerics import _validate_pad_sigma, do_convolution
+from ._numerics import _validate_convolution_arguments, do_convolution
 
 
 # spectral-cube ships no type information, so its warning class is Any to mypy
@@ -102,10 +102,9 @@ def convolve_uv(
         spectral-cube only uses to guard ``apply_function`` and which nothing
         here needs. The returned cube keeps the input's setting.
     """
-    if boundary not in {"fill", "wrap"}:
-        raise ValueError("boundary must be 'fill' or 'wrap'")
-    if boundary == "fill":
-        pad_sigma = _validate_pad_sigma(pad_sigma)
+    # Reject a bad argument before anything is allocated or warned about, instead of
+    # once per channel inside do_convolution, after the output array has been created
+    pad_sigma = _validate_convolution_arguments(target_beam, boundary, pad_sigma, nan_treatment)
 
     # Convolving a full cube requires materializing the whole cube (and a copy
     # of it) in memory. Warn using spectral-cube's own huge-operation
