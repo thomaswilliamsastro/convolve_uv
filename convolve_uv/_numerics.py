@@ -11,6 +11,8 @@ over channels, handling ``VaryingResolutionSpectralCube``, huge-cube memory
 warnings, etc.) lives in :mod:`convolve_uv._convolve`.
 """
 
+import numbers
+
 import astropy.units as u
 import numpy as np
 from astropy.convolution import convolve_fft, interpolate_replace_nans
@@ -51,8 +53,22 @@ def _validate_pad_sigma(pad_sigma: float) -> float:
     return pad_sigma
 
 
+def _check_bool(name: str, value: object) -> None:
+    """Raise a ``TypeError`` unless ``value`` is a bool (a numpy bool is fine).
+
+    Anything else would be read by truthiness, so ``"False"`` would act as ``True``.
+    """
+    if not isinstance(value, bool | np.bool_):
+        raise TypeError(f"{name} must be True or False, not {type(value).__name__}")
+
+
 def _validate_convolution_arguments(
-    target_beam: Beam, boundary: str, pad_sigma: float, nan_treatment: str
+    target_beam: Beam,
+    boundary: str,
+    pad_sigma: float,
+    nan_treatment: str,
+    fill_value: float,
+    preserve_nan: bool,
 ) -> float:
     """Check the arguments shared by ``convolve_uv`` and ``do_convolution``.
 
@@ -63,7 +79,9 @@ def _validate_convolution_arguments(
         float: ``pad_sigma`` as a float (unchanged when ``boundary='wrap'``, which ignores it).
 
     Raises:
-        TypeError: If ``target_beam`` is not a ``Beam``.
+        TypeError: If ``target_beam`` is not a ``Beam``, ``fill_value`` is not a real number
+            (checked only for ``nan_treatment='fill'``, the only case that uses it), or
+            ``preserve_nan`` is not a bool.
         ValueError: If ``boundary`` or ``nan_treatment`` is not one of its allowed values,
             or ``pad_sigma`` is not finite and non-negative (checked only for ``'fill'``).
     """
@@ -75,6 +93,10 @@ def _validate_convolution_arguments(
         pad_sigma = _validate_pad_sigma(pad_sigma)
     if nan_treatment not in {"interpolate", "fill"}:
         raise ValueError("nan_treatment must be 'interpolate' or 'fill'")
+    # nan and inf are real numbers and are allowed: they leave the pixels out of the convolution
+    if nan_treatment == "fill" and not isinstance(fill_value, numbers.Real):
+        raise TypeError(f"fill_value must be a real number, not {type(fill_value).__name__}")
+    _check_bool("preserve_nan", preserve_nan)
     return pad_sigma
 
 
@@ -385,7 +407,9 @@ def do_convolution(
             ``'fill'`` pads the image to reduce wraparound effects and excludes the
             padded pixels from the valid convolution weights. Defaults to ``'fill'``.
         fill_value (float, optional): Value used to replace non-finite data when
-            ``nan_treatment='fill'``. Defaults to 0.0.
+            ``nan_treatment='fill'``, the only case that uses it (otherwise it is ignored and
+            not checked). It must be a real number. ``nan`` or ``inf`` leaves those pixels out of
+            the convolution instead of treating them as data. Defaults to 0.0.
         pad_sigma (float, optional): Number of kernel standard deviations to pad on each
             side when using ``boundary='fill'``. Ignored and not validated when
             ``boundary='wrap'``. For ``'fill'``, it must be finite and non-negative;
@@ -406,7 +430,7 @@ def do_convolution(
             * ``fill``: ``NaN`` values are replaced by ``fill_value`` prior to
               convolution.
         preserve_nan (bool, optional): After performing convolution, should pixels that
-            were originally NaN again become NaN? Defaults to False.
+            were originally NaN again become NaN? Must be ``True`` or ``False``. Defaults to False.
 
     Returns:
         np.ndarray: The convolved image, with the same shape and dtype as ``image_slice``.
@@ -426,7 +450,9 @@ def do_convolution(
     except (AttributeError, NoBeamError) as error:
         raise AttributeError("image_slice must have a valid beam") from error
 
-    pad_sigma = _validate_convolution_arguments(target_beam, boundary, pad_sigma, nan_treatment)
+    pad_sigma = _validate_convolution_arguments(
+        target_beam, boundary, pad_sigma, nan_treatment, fill_value, preserve_nan
+    )
 
     # A zero-width kernel cannot interpolate missing values, so preserve them.
     if beam == target_beam:
@@ -483,7 +509,9 @@ def do_convolution(
         pad_x = int(pad_x_size)
         pad_y = int(pad_y_size)
         pad_width = [(0, 0)] * (data.ndim - 2) + [(pad_y, pad_y), (pad_x, pad_x)]
-        data = np.pad(data, pad_width, mode="constant", constant_values=fill_value)
+        # The padded pixels are marked invalid just below, so their value is never used. It must
+        # not be fill_value, which is only meant to be used (and checked) for nan_treatment='fill'.
+        data = np.pad(data, pad_width, mode="constant", constant_values=0.0)
         valid = np.pad(valid, pad_width, mode="constant", constant_values=False)
 
     transfer = transfer_function(data.shape, covariance)

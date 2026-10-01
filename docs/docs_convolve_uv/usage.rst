@@ -102,13 +102,15 @@ happens to ``NaN`` pixels:
   inside the image count. A ``NaN`` with no valid data within reach of the kernel (about five kernel
   widths) stays ``NaN``.
 * ``'fill'``: each ``NaN`` is replaced by ``fill_value`` (0.0 by default) before the convolution, so
-  it counts as real data with that value. ``fill_value`` is not used with ``'interpolate'``.
+  it counts as real data with that value. ``fill_value`` must be a real number. ``nan`` or ``inf`` is
+  allowed too, and leaves those pixels out of the convolution instead of counting them as data.
+  ``fill_value`` is not used, and not checked, with ``'interpolate'``.
 
 The difference shows in an image of ones with a single ``NaN``. Interpolating gives back 1.0 at that
 pixel, whereas filling with 0.0 treats it as a real zero, which leaves a dip there and lowers its
 neighbours.
 
-``preserve_nan`` (``False`` by default) puts ``NaN`` back, after the convolution, at the pixels that
+``preserve_nan`` (``False`` by default, and it must be ``True`` or ``False``) puts ``NaN`` back, after the convolution, at the pixels that
 were ``NaN`` in the input, so the output has the same holes as the input. Without it, the
 interpolated or filled values stay in the result. A channel that already has the target beam is
 treated differently, as described in :ref:`channels-at-target-beam`.
@@ -134,7 +136,7 @@ Progress bar
 
 When passed a full cube, ``convolve_uv`` shows a progress bar while it convolves the channels,
 but only if standard output is a terminal or an IPython console. To draw nothing, pass
-``show_progress=False``:
+``show_progress=False`` (it must be ``True`` or ``False``):
 
 .. code-block:: python
 
