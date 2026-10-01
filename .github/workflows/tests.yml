@@ -70,11 +70,16 @@ jobs:
         run: tox
       - name: Verify coverage and test reports were produced
         # Codecov silently uploads nothing if no report exists, so fail here
-        # instead of letting coverage reporting quietly stop working.
+        # instead of letting coverage reporting quietly stop working. This and
+        # the upload below also run when the tests fail, including on the
+        # coverage gate (--cov-fail-under in tox.ini), so that Codecov can show
+        # which lines are not covered.
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           ls ./*-cov-coverage.xml ./*-cov-junit.xml
       - name: Upload coverage to Codecov
+        if: ${{ !cancelled() }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

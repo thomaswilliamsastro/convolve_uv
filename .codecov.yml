@@ -1,10 +1,14 @@
-# Don't fail if coverage drops slightly
+# Coverage is 100% (line and branch), and CI fails any test job below that
+# (--cov-fail-under=100 in tox.ini), so Codecov is held to the same bar.
 coverage:
   status:
     project:
       default:
-        target: auto
-        threshold: 0.1%
+        target: 100%
+        threshold: 0%
+    patch:
+      default:
+        target: 100%
 
 # Setup layout for comments on pull requests
 comment:
