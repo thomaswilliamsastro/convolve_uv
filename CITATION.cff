@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: If you use this software, please cite it using the metadata from this file.
+type: software
+title: convolve_uv
+abstract: >-
+  Gaussian convolution of radio astronomy images and spectral cubes, performed directly in the
+  uv-plane, so that convolution kernels smaller than the pixel scale are handled without a loss of
+  resolution.
+authors:
+  - given-names: Thomas
+    family-names: Williams
+    orcid: https://orcid.org/0000-0002-0012-2142
+repository-code: https://github.com/thomaswilliamsastro/convolve_uv
+repository-artifact: https://pypi.org/project/convolve-uv/
+url: https://convolve-uv.readthedocs.io/en/latest
+license: GPL-3.0-or-later
+# The date of the latest release (v0.4.0). Only its year appears in a citation, so it stays correct
+# until the year changes; update it when releasing. There is deliberately no `version`: it comes from
+# the git tags (setuptools_scm), so a value here would go out of date with every release.
+date-released: "2026-09-30"
