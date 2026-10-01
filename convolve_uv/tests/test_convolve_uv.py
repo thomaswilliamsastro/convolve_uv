@@ -500,6 +500,20 @@ class TestConvolveUV:
                 target_beam=common_beam,
             )
 
+    @pytest.mark.parametrize("cube_type", ["spectral", "varying_resolution", "one_channel"])
+    def test_do_convolution_rejects_a_cube_with_a_clear_error(self, cube_type):
+        """A cube is rejected with a TypeError that says what to pass instead."""
+        target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
+        if cube_type == "varying_resolution":
+            cube = _create_test_varying_resolution_cube(x_size=21, y_size=21, vel_size=2)
+        else:
+            cube = _create_test_cube(
+                x_size=21, y_size=21, vel_size=1 if cube_type == "one_channel" else 2
+            )
+
+        with pytest.raises(TypeError, match=r"single 2D image.*3 dimensions.*use convolve_uv"):
+            do_convolution(cube, target_beam)
+
     def test_non_valid_target_beam(self):
         """Test passing a non-valid target beam."""
         pix_scale = 0.1 * u.arcsec
