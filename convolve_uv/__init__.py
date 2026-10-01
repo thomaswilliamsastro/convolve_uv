@@ -2,7 +2,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from .convolve_uv import LargeCubeMemoryWarning, convolve_uv
+from ._convolve import LargeCubeMemoryWarning, convolve_uv
 
 try:
     __version__ = version("convolve_uv")
