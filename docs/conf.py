@@ -59,10 +59,6 @@ source_suffix = {
     ".md": "markdown",
 }
 
-templates_path = [
-    "_templates",
-]
-
 exclude_patterns = [
     "_build",
     "Thumbs.db",
@@ -79,6 +75,3 @@ coverage_show_missing_items = True
 master_doc = "index"
 html_logo = "images/convolve_uv.png"
 html_theme = "sphinx_rtd_theme"
-html_static_path = [
-    "_static",
-]
