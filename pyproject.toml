@@ -105,7 +105,7 @@ files = ["convolve_uv"]
 strict = true
 
 [[tool.mypy.overrides]]
-# These dependencies ship no type information
+# None of these dependencies has a py.typed marker, so mypy cannot use their types (see CONTRIBUTING.md)
 module = ["astropy.*", "radio_beam.*", "spectral_cube.*"]
 ignore_missing_imports = true
 
