@@ -22,7 +22,7 @@ from spectral_cube import (
 )
 from spectral_cube.utils import SpectralCubeWarning
 
-from ._numerics import _validate_convolution_arguments, do_convolution
+from ._numerics import _check_bool, _validate_convolution_arguments, do_convolution
 
 
 # spectral-cube ships no type information, so its warning class is Any to mypy
@@ -64,7 +64,9 @@ def convolve_uv(
             ``'fill'`` pads the image to reduce wraparound effects and excludes the
             padded pixels from the valid convolution weights. Defaults to ``'fill'``.
         fill_value (float, optional): Value used to replace non-finite data when
-            ``nan_treatment='fill'``. Defaults to 0.0.
+            ``nan_treatment='fill'``, the only case that uses it (otherwise it is ignored and
+            not checked). It must be a real number. ``nan`` or ``inf`` leaves those pixels out of
+            the convolution instead of treating them as data. Defaults to 0.0.
         pad_sigma (float, optional): Number of kernel standard deviations to pad on each
             side when using ``boundary='fill'``. Ignored and not validated when
             ``boundary='wrap'``. For ``'fill'``, it must be finite and non-negative;
@@ -87,13 +89,13 @@ def convolve_uv(
             * ``fill``: ``NaN`` values are replaced by ``fill_value`` prior to
               convolution.
         preserve_nan (bool, optional): After performing convolution, should pixels that
-            were originally NaN again become NaN? Defaults to False.
+            were originally NaN again become NaN? Must be ``True`` or ``False``. Defaults to False.
         show_progress (bool, optional): Show a progress bar while convolving the channels
             of a cube. The bar is drawn on standard output, and only when that is a terminal
             or an IPython console. Set this to ``False`` to draw nothing, which is required
             when calling from a thread other than the main one (the bar installs a signal
-            handler, which Python only allows in the main thread). Ignored for a
-            ``Projection``, which has no bar. Defaults to True.
+            handler, which Python only allows in the main thread). Must be ``True`` or
+            ``False``. Ignored for a ``Projection``, which has no bar. Defaults to True.
 
     Returns:
         Projection | SpectralCube: The convolved Projection or SpectralCube
@@ -112,7 +114,11 @@ def convolve_uv(
     """
     # Reject a bad argument before anything is allocated or warned about, instead of
     # once per channel inside do_convolution, after the output array has been created
-    pad_sigma = _validate_convolution_arguments(target_beam, boundary, pad_sigma, nan_treatment)
+    pad_sigma = _validate_convolution_arguments(
+        target_beam, boundary, pad_sigma, nan_treatment, fill_value, preserve_nan
+    )
+    # Only convolve_uv has this argument, so it is not in the checks that do_convolution shares
+    _check_bool("show_progress", show_progress)
 
     # Convolving a full cube requires materializing the whole cube (and a copy
     # of it) in memory. Warn using spectral-cube's own huge-operation
