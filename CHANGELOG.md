@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add the Zenodo DOI to `CITATION.cff` and a DOI badge to the README. The first Zenodo record was created for 0.5.0 ([10.5281/zenodo.23087281](https://doi.org/10.5281/zenodo.23087281)); the DOI used is the concept DOI for all versions, [10.5281/zenodo.23087280](https://doi.org/10.5281/zenodo.23087280), which resolves to the newest release and so does not change from release to release. The APA and BibTeX citations built from `CITATION.cff` (which GitHub's "Cite this repository" is also built from) now carry it. `tools/check_citation.py`, run by the `wheel` tox environments, checks that it is a Zenodo DOI and that the README links the same one, and `.github/RELEASING.md` no longer asks for a manual DOI step after a release ([#85](https://github.com/thomaswilliamsastro/convolve_uv/pull/85)).
+
 ## [0.5.0] - 2026-10-01
 
 ### Added
