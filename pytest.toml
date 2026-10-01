@@ -1,5 +1,8 @@
 [pytest]
 minversion = "9.0"
+# Only the package holds tests. Without this, pytest also imports anything under tools/ or docs/
+# whose name looks like a test module, and coverage then counts that file.
+testpaths = ["convolve_uv"]
 addopts = [
     "-ra",
     "-q",
