@@ -1,0 +1,107 @@
+# Releasing convolve_uv
+
+A release is a git tag on `main`. The tag is the only place the version is set: `setuptools_scm` reads it
+when the package is built, so there is no version number to edit in the code. Between releases, `main`
+builds as a development version such as `0.4.1.dev33+g4459db6`.
+
+Pushing a tag that starts with `v` runs the `Publish` workflow
+([`publish.yml`](workflows/publish.yml)). It runs the full test workflow, builds the source distribution
+and the wheel, checks that the tag matches the version of what it built, and uploads both to PyPI with
+trusted publishing, so there is no API token. Nothing else is automatic: the GitHub release is written by
+hand (step 4).
+
+Versions follow [Semantic Versioning](https://semver.org), tagged `vMAJOR.MINOR.PATCH`. While the major
+version is 0, a breaking change may come in a minor release. Mark it in the changelog with an entry that
+starts with **Breaking:**, as for [#56](https://github.com/thomaswilliamsastro/convolve_uv/pull/56).
+
+## Before you start
+
+- `main` is green, and nothing that belongs in the release is still open. The required checks are `Build`,
+  `Test` and `Check Changelog`.
+- Read `## [Unreleased]` in `CHANGELOG.md`. Every change users can see since the last tag should be there,
+  and breaking changes should be marked. Dependabot adds its own entries under `### Dependencies`.
+
+## 1. Cut the changelog
+
+Open a pull request that changes only these three things:
+
+1. In `CHANGELOG.md`, put a new, empty `## [Unreleased]` heading above the existing entries, and turn the
+   old `## [Unreleased]` heading into `## [X.Y.Z] - YYYY-MM-DD`, with the date you will push the tag. Keep an
+   `## [Unreleased]` heading at the top: the Dependabot changelog bot adds to it.
+2. At the bottom of `CHANGELOG.md`, point `[Unreleased]` at `compare/vX.Y.Z...HEAD` and add a new
+   `[X.Y.Z]: https://github.com/thomaswilliamsastro/convolve_uv/compare/vPREVIOUS...vX.Y.Z` line above the
+   previous version's.
+3. In `CITATION.cff`, set `date-released` to the same date, in quotes. Only its year shows in a citation.
+
+The 0.4.0 release was prepared this way in [#36](https://github.com/thomaswilliamsastro/convolve_uv/pull/36).
+Merge the pull request like any other: pull requests are squash-merged, which is the only method the
+repository allows.
+
+## 2. Tag the release commit
+
+```bash
+git switch main
+git pull --ff-only
+git log -1                # must be the commit from step 1
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+Only tag a commit that is on `main`. The workflow does not check this: all that the `pypi` environment
+requires is that the tag starts with `v`.
+
+## 3. Watch the publish
+
+Open the `Publish` run for the tag in the Actions tab. Its jobs are `Build source distribution`,
+`Run tests` (the whole test workflow) and `Upload to PyPI`, which needs the other two. The upload does not
+start unless the build, the tag check and every test pass.
+
+## 4. Create the GitHub release
+
+When the upload has finished, write the release from the changelog section, as for earlier releases:
+
+```bash
+awk -v v="X.Y.Z" '/^## \[/{p=(index($0,"[" v "]")==4); next} p' CHANGELOG.md > notes.md
+gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file notes.md
+rm notes.md
+```
+
+## 5. Check it
+
+- PyPI shows the new version at <https://pypi.org/project/convolve-uv/>. In a fresh environment,
+  `pip install convolve-uv==X.Y.Z` and `python -c "import convolve_uv; print(convolve_uv.__version__)"` should
+  print the version.
+- On [Read the Docs](https://convolve-uv.readthedocs.io), `latest` is built from `main` and every tag gets a
+  version of its own, with `stable` following the newest. Check that the build for the tag passed.
+- The GitHub release is marked **Latest**.
+
+## If something goes wrong
+
+- **The tests or the tag check fail.** Nothing was uploaded. Fix the problem with a pull request. Then
+  delete the tag (`git push --delete origin vX.Y.Z` and `git tag -d vX.Y.Z`) and tag the fixed commit again.
+- **The upload fails** (for example because the trusted publisher on PyPI does not match). Fix the cause,
+  then use **Re-run failed jobs** on the same run. The workflow has no manual trigger.
+- **A bad release was published.** PyPI does not let a file name be used twice, so a published version
+  cannot be replaced. Yank it on PyPI (the project's *Manage* page, then the release) and publish a new
+  patch release.
+
+## One-off setup
+
+### The trusted publisher on PyPI
+
+For the project `convolve-uv` on PyPI, under *Publishing*, add a GitHub trusted publisher with:
+
+| Field | Value |
+|---|---|
+| Owner | `thomaswilliamsastro` |
+| Repository name | `convolve_uv` |
+| Workflow name | `publish.yml` |
+| Environment name | `pypi` |
+
+PyPI matches on these, so the workflow's file name and the environment name in `publish.yml` have to stay as
+they are, or be changed on PyPI at the same time.
+
+### The `pypi` environment on GitHub
+
+The repository has an environment called `pypi`, and only tags matching `v*` can deploy to it. It has no
+required reviewers, so a release needs no manual approval.
