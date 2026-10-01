@@ -46,6 +46,10 @@ pip install tox tox-uv
 `tox -e typecheck-oldestdeps`), which CI runs too. They check that the minimum versions the package
 declares really work.
 
+tox keeps each environment in `.tox/`. They take from about 10 to 300 MB each, a few GB for all of them, and
+git ignores them, as it does the coverage and JUnit reports that the `-cov` environments write to the
+repository root. Delete `.tox/` to reclaim the space; tox recreates what it needs.
+
 To fix formatting rather than just report it, install the linter with `pip install -e ".[test-ruff]"` and run
 `ruff format` and `ruff check --fix`.
 
