@@ -379,6 +379,50 @@ class TestConvolveUV:
             "Convolved kernel does not match analytic kernel"
         )
 
+    @staticmethod
+    def _beam_area_in_pixels(beam: Beam, pix_scale: u.Quantity) -> float:
+        """The area of a Gaussian beam in pixels, from the formula for its full widths."""
+        area = np.pi * beam.major * beam.minor / (4 * np.log(2))
+        return float((area / pix_scale**2).to_value(u.dimensionless_unscaled))
+
+    @pytest.mark.parametrize("boundary", BOUNDARY_KEYWORDS)
+    @pytest.mark.parametrize(
+        "target_beam",
+        [
+            Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg),
+            Beam(major=1.8 * u.arcsec, minor=1.2 * u.arcsec, pa=30 * u.deg),
+        ],
+        ids=["round", "elliptical rotated"],
+    )
+    @pytest.mark.parametrize("unit", [u.Jy / u.beam, u.K], ids=["Jy/beam", "K"])
+    def test_convolution_conserves_flux(self, unit: u.Unit, target_beam: Beam, boundary: str):
+        """The flux of the sources is the same after convolving, whatever the beams.
+
+        For Jy/beam the flux is the sum of the image divided by the beam area in pixels, which
+        changes with the beam, so the values have to be rescaled by the ratio of the beam areas.
+        For a brightness temperature the flux is proportional to the sum of the image.
+        """
+        pix_scale = 0.1 * u.arcsec
+        data = np.zeros((2, 101, 101))
+        data[0, 50, 50] = 3.0
+        data[0, 40, 62] = 1.0
+        data[1, 55, 45] = 2.0
+        cube = _create_test_cube(pix_scale=pix_scale, data_dtype=np.float64)
+        cube = SpectralCube(
+            data=data * unit, wcs=cube.wcs, beam=cube.beam, allow_huge_operations=True
+        )
+
+        res = convolve_uv(cube, target_beam, boundary=boundary).unmasked_data[:].value
+
+        if unit == u.K:
+            flux_before, flux_after = data.sum(axis=(1, 2)), res.sum(axis=(1, 2))
+        else:
+            flux_before = data.sum(axis=(1, 2)) / self._beam_area_in_pixels(cube.beam, pix_scale)
+            flux_after = res.sum(axis=(1, 2)) / self._beam_area_in_pixels(target_beam, pix_scale)
+        assert np.allclose(flux_after, flux_before, rtol=1e-6, atol=0.0)
+        # The sources really were blurred, so the conservation is not a matter of nothing changing
+        assert np.count_nonzero(res[0] > 0.01 * res[0].max()) > 100
+
     @pytest.mark.parametrize("common_beam_resolution", TEST_RESOLUTIONS)
     def test_convolve_slice(
         self,
