@@ -34,7 +34,9 @@ Open a pull request that changes only these three things:
    `## [Unreleased]` heading at the top: the Dependabot changelog bot adds to it.
 2. At the bottom of `CHANGELOG.md`, point `[Unreleased]` at `compare/vX.Y.Z...HEAD` and add a new
    `[X.Y.Z]: https://github.com/thomaswilliamsastro/convolve_uv/compare/vPREVIOUS...vX.Y.Z` line above the
-   previous version's.
+   previous version's. Those two links do not work until the tag exists (step 2), so the documentation's
+   link check skips this repository's `compare/` links (`linkcheck_ignore` in `docs/conf.py`). Check them
+   after tagging.
 3. In `CITATION.cff`, set `date-released` to the same date, in quotes. Only its year shows in a citation.
 
 The 0.4.0 release was prepared this way in [#36](https://github.com/thomaswilliamsastro/convolve_uv/pull/36).

@@ -75,3 +75,8 @@ coverage_show_missing_items = True
 master_doc = "index"
 html_logo = "images/convolve_uv.png"
 html_theme = "sphinx_rtd_theme"
+
+# The changelog's compare links name the tag of the release they belong to. Cutting a release
+# changes the changelog before the tag exists, so the check on that pull request would fail on a
+# link that is correct, and can only be checked afterwards. The links follow a fixed pattern.
+linkcheck_ignore = [r"https://github\.com/thomaswilliamsastro/convolve_uv/compare/.*"]

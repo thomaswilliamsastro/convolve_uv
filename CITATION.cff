@@ -25,4 +25,4 @@ keywords:
 # The date of the latest release (v0.4.0). Only its year appears in a citation, so it stays correct
 # until the year changes; update it when releasing. There is deliberately no `version`: it comes from
 # the git tags (setuptools_scm), so a value here would go out of date with every release.
-date-released: "2026-09-30"
+date-released: "2026-10-01"
