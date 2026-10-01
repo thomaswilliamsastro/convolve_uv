@@ -60,9 +60,13 @@ To fix formatting rather than just report it, install the linter with `pip insta
   `spectral-cube` have no `py.typed` marker, so mypy cannot use their types and anything that comes from them
   is `Any` to it. The tests cover every line where the package uses them (the project is at 100% coverage): a
   misspelt attribute fails the first test that runs it, but mypy does not notice it. Keep those lines covered.
-- Tests are in `convolve_uv/tests/`. `test_convolve_uv.py` covers the public `convolve_uv` function,
-  `test_numerics.py` covers the helpers in `convolve_uv/_numerics.py`, and `helpers.py` holds the builders
-  they share.
+- Tests are in `convolve_uv/tests/`, one file for each kind of test, and `helpers.py` holds the builders they
+  share. Through the public `convolve_uv` function: `test_arguments.py` (the checks on the arguments),
+  `test_accuracy.py` (the result against the analytic answer), `test_inputs.py` (slices, cubes, masks and data
+  types), `test_missing_data.py` (NaNs, masks and images already at the target beam), `test_memory.py`
+  (`allow_huge_operations` and the large cube warning), `test_size_limits.py` and `test_progress.py`. For the
+  helpers in `convolve_uv/_numerics.py`: `test_covariance.py`, `test_nan_interpolation.py` and
+  `test_do_convolution.py`. Put a new test in the file for what it checks.
 - The project has 100% line and branch coverage, and CI fails any test job below that, counting the tests
   themselves. Please cover new code, and add a test that fails without your change when you fix a bug. To run
   part of the suite with coverage while you work, turn the check off:
