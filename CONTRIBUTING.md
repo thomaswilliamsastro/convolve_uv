@@ -56,7 +56,10 @@ To fix formatting rather than just report it, install the linter with `pip insta
 ## Code and tests
 
 - Docstrings use the Google style, which `ruff` enforces. The line length is 100.
-- The package is fully type annotated and checked with `mypy --strict`.
+- The package is fully type annotated and checked with `mypy --strict`. `astropy`, `radio-beam` and
+  `spectral-cube` have no `py.typed` marker, so mypy cannot use their types and anything that comes from them
+  is `Any` to it. The tests cover every line where the package uses them (the project is at 100% coverage): a
+  misspelt attribute fails the first test that runs it, but mypy does not notice it. Keep those lines covered.
 - Tests are in `convolve_uv/tests/`. `test_convolve_uv.py` covers the public `convolve_uv` function,
   `test_numerics.py` covers the helpers in `convolve_uv/_numerics.py`, and `helpers.py` holds the builders
   they share.
