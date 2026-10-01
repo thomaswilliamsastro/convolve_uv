@@ -9,6 +9,7 @@ from spectral_cube import SpectralCube
 
 from .._numerics import (
     _MIN_INTERPOLATION_WEIGHT,
+    FWHM_TO_SIGMA,
     _interpolate_nans,
     beam_covariance_en,
     do_convolution,
@@ -172,6 +173,88 @@ class TestCovariance:
         """Invalid beam inputs raise a contextual error."""
         with pytest.raises(ValueError, match="Beam covariance requires finite angular"):
             beam_covariance_en(None)
+
+    @pytest.mark.parametrize(
+        ("pa_deg", "expected"),
+        [
+            (0.0, [[1.0, 0.0], [0.0, 4.0]]),
+            (90.0, [[4.0, 0.0], [0.0, 1.0]]),
+            (180.0, [[1.0, 0.0], [0.0, 4.0]]),
+            (45.0, [[2.5, 1.5], [1.5, 2.5]]),
+            (-45.0, [[2.5, -1.5], [-1.5, 2.5]]),
+        ],
+    )
+    def test_beam_covariance_follows_the_position_angle(
+        self, pa_deg: float, expected: list[list[float]]
+    ):
+        """The major axis lies at the position angle, measured from north towards east.
+
+        The beam has sigma 2 and 1 in whatever units its major and minor axes are given in,
+        so the covariance is 4 along the major axis and 1 along the minor axis.
+        """
+        sigma_to_fwhm = 1.0 / FWHM_TO_SIGMA
+        beam = Beam(
+            major=2.0 * sigma_to_fwhm * u.deg, minor=1.0 * sigma_to_fwhm * u.deg, pa=pa_deg * u.deg
+        )
+
+        assert np.allclose(beam_covariance_en(beam), expected, rtol=0.0, atol=1e-12)
+
+    @pytest.mark.parametrize(
+        ("unit", "per_degree"),
+        [
+            (u.deg, 1.0),
+            (u.rad, np.pi / 180.0),
+            (u.arcmin, 60.0),
+            (u.arcsec, 3600.0),
+            (u.cycle, 1.0 / 360.0),
+        ],
+        ids=str,
+    )
+    def test_beam_covariance_position_angle_in_any_angular_unit(self, unit, per_degree: float):
+        """The same position angle gives the same covariance in any unit that expresses it."""
+        reference = Beam(major=3 * u.arcsec, minor=1.5 * u.arcsec, pa=30 * u.deg)
+        beam = Beam(major=3 * u.arcsec, minor=1.5 * u.arcsec, pa=30 * per_degree * unit)
+
+        assert beam.pa.unit == unit
+        assert np.allclose(
+            beam_covariance_en(beam), beam_covariance_en(reference), rtol=1e-12, atol=0.0
+        )
+
+    @pytest.mark.parametrize(
+        ("unit", "per_arcsec"),
+        [
+            (u.arcsec, 1.0),
+            (u.arcmin, 1 / 60),
+            (u.deg, 1 / 3600),
+            (u.mas, 1000.0),
+            (u.rad, np.pi / 648000),
+        ],
+        ids=str,
+    )
+    def test_beam_covariance_axes_in_any_angular_unit(self, unit, per_arcsec: float):
+        """The major and minor axes can be in any angular unit."""
+        reference = Beam(major=3 * u.arcsec, minor=1.5 * u.arcsec, pa=30 * u.deg)
+        beam = Beam(major=3 * per_arcsec * unit, minor=1.5 * per_arcsec * unit, pa=30 * u.deg)
+
+        assert beam.major.unit == unit
+        assert np.allclose(
+            beam_covariance_en(beam), beam_covariance_en(reference), rtol=1e-12, atol=0.0
+        )
+
+    @pytest.mark.parametrize("unit", [u.rad, u.arcmin, u.cycle], ids=str)
+    def test_convolution_to_a_beam_with_the_position_angle_in_another_unit(self, unit):
+        """Convolving to a beam whose position angle is in another unit gives the same image."""
+        cube = _create_test_cube(x_size=31, y_size=31, vel_size=1)
+        degrees = Beam(major=3 * u.arcsec, minor=2 * u.arcsec, pa=30 * u.deg)
+        other = Beam(major=3 * u.arcsec, minor=2 * u.arcsec, pa=(30 * u.deg).to(unit))
+
+        assert other.pa.unit == unit
+        assert np.allclose(
+            do_convolution(cube[0], other),
+            do_convolution(cube[0], degrees),
+            rtol=0.0,
+            atol=1e-12,
+        )
 
     def test_kernel_covariance_pixels_anisotropic_rotated(self):
         """Test kernel_covariance_pixels uses the full pixel-scale matrix.
