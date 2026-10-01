@@ -512,6 +512,66 @@ class TestConvolveUV:
         far_corner = expected[-1, -1] / expected.max()
         assert far_corner > 0.01 if boundary == "wrap" else far_corner < 1e-3
 
+    @pytest.mark.parametrize(
+        "source_covariance",
+        [
+            np.array([[16.0, 0.0], [0.0, 16.0]]),
+            np.array([[25.0, 0.0], [0.0, 9.0]]),
+            np.array([[20.0, 6.0], [6.0, 12.0]]),
+        ],
+        ids=["round", "elliptical", "elliptical rotated"],
+    )
+    @pytest.mark.parametrize(
+        "target_beam",
+        [
+            Beam(major=1.8 * u.arcsec, minor=1.8 * u.arcsec, pa=0 * u.deg),
+            Beam(major=2.2 * u.arcsec, minor=1.5 * u.arcsec, pa=30 * u.deg),
+        ],
+        ids=["round", "elliptical rotated"],
+    )
+    def test_extended_gaussian_source_widths_add_in_quadrature(
+        self, target_beam: Beam, source_covariance: np.ndarray
+    ):
+        """A Gaussian source comes out as a Gaussian whose covariance is the sum of two.
+
+        The convolution kernel has the target beam's covariance minus the input beam's, so
+        the source's covariance, which has the input beam in it, goes up by exactly that:
+        the widths add in quadrature along each axis, not in a straight line. The image is
+        compared with the Gaussian worked out directly, and so are its second moments, which
+        are measured from the image and do not depend on the sampling of the Gaussian.
+        """
+        # Large enough that the widest result, a sigma of about 10 pixels, is 8 sigma from the
+        # edges, where the image would otherwise cut off the tails of the Gaussian
+        ny = nx = 161
+        yc = xc = 80
+        pix_scale = 0.1 * u.arcsec
+        input_beam = Beam(major=1.0 * u.arcsec, minor=1.0 * u.arcsec, pa=0 * u.deg)
+        y, x = np.mgrid[0:ny, 0:nx]
+        data = self._gaussian(source_covariance, y - yc, x - xc)[np.newaxis]
+        cube = _create_test_cube(
+            x_size=nx, y_size=ny, vel_size=1, pix_scale=pix_scale, beam=input_beam
+        )
+        cube = SpectralCube(data=data * u.K, wcs=cube.wcs, beam=input_beam)
+        kernel_covariance = self._kernel_covariance_pixels(
+            target_beam, (input_beam.major * FWHM_TO_SIGMA / pix_scale).to_value(""), pix_scale
+        )
+        expected_covariance = source_covariance + kernel_covariance
+
+        res = convolve_uv(cube, target_beam).unmasked_data[0].value
+
+        expected = self._gaussian(expected_covariance, y - yc, x - xc)
+        assert np.allclose(res, expected, rtol=0.0, atol=1e-6 * expected.max())
+        total = res.sum()
+        measured = np.array(
+            [
+                [(res * (x - xc) ** 2).sum(), (res * (x - xc) * (y - yc)).sum()],
+                [(res * (x - xc) * (y - yc)).sum(), (res * (y - yc) ** 2).sum()],
+            ]
+        )
+        assert np.allclose(measured / total, expected_covariance, rtol=1e-4, atol=1e-4)
+        # The source was not already as wide as the result, so the test can tell them apart
+        assert np.trace(expected_covariance) > 1.5 * np.trace(source_covariance)
+
     @pytest.mark.parametrize("common_beam_resolution", TEST_RESOLUTIONS)
     def test_convolve_slice(
         self,
