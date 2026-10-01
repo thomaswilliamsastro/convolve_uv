@@ -66,7 +66,8 @@ docs = [
 requires = [
     # 77 is the first release that supports PEP 639 license expressions
     "setuptools >= 77.0.1",
-    "setuptools_scm >= 8.0",
+    # 8.0.0 itself was yanked from PyPI, so 8.0.1 is the lowest version anyone can install
+    "setuptools_scm >= 8.0.1",
 ]
 
 build-backend = "setuptools.build_meta"
