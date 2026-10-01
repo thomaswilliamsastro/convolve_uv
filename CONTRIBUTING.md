@@ -34,7 +34,7 @@ pip install tox tox-uv
 | Command | What it does |
 |---|---|
 | `tox -e py312` | Runs the tests. Use `py313` or `py314` for another Python. |
-| `tox -e py312-cov` | The same, with coverage and the coverage and JUnit reports. |
+| `tox -e py312-cov` | The same, with coverage and the coverage and JUnit reports. It fails if coverage is below 100%. |
 | `tox -e py312-oldestdeps` | The same, with the lowest versions of the dependencies that `pyproject.toml` allows. |
 | `tox -e lint` | `ruff check` and `ruff format --check`. |
 | `tox -e typecheck` | `mypy`, strict for the package and more lenient for the tests. |
@@ -60,8 +60,10 @@ To fix formatting rather than just report it, install the linter with `pip insta
 - Tests are in `convolve_uv/tests/`. `test_convolve_uv.py` covers the public `convolve_uv` function,
   `test_numerics.py` covers the helpers in `convolve_uv/_numerics.py`, and `helpers.py` holds the builders
   they share.
-- The project has 100% line and branch coverage. Please keep new code covered, and add a test that fails
-  without your change when you fix a bug.
+- The project has 100% line and branch coverage, and CI fails any test job below that, counting the tests
+  themselves. Please cover new code, and add a test that fails without your change when you fix a bug. To run
+  part of the suite with coverage while you work, turn the check off:
+  `tox -e py312-cov -- -k name --cov-fail-under=0`.
 - The public API is `convolve_uv` and `LargeCubeMemoryWarning`, both imported from the package. Everything
   else, including `convolve_uv._numerics`, is internal and can change without notice.
 
