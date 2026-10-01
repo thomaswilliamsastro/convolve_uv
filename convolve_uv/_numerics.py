@@ -173,7 +173,7 @@ def kernel_covariance_pixels(
 
     Args:
         cube_slice (Projection): 2D projection of a full 3D SpectralCube.
-        target_beam (Beam): The desired circular beam to convolve to.
+        target_beam (Beam): The desired beam to convolve to, which may be elliptical.
 
     Returns:
         np.ndarray: The 2x2 covariance matrix of the kernel in pixel coordinates.
@@ -369,7 +369,7 @@ def do_convolution(
     nan_treatment: str = "interpolate",
     preserve_nan: bool = False,
 ) -> np.ndarray:
-    """Convolve a single 2D image to a round Gaussian beam.
+    """Convolve a single 2D image to a Gaussian beam.
 
     This works on one image at a time. To convolve a full cube, use
     :func:`~convolve_uv.convolve_uv`, which calls this for each channel.
@@ -378,7 +378,9 @@ def do_convolution(
         image_slice (Projection): A 2D image, such as a channel slice of a
             ``SpectralCube`` (``cube[0]``) or a ``Projection``. A cube is not accepted and
             raises a ``TypeError``.
-        target_beam (Beam): The desired circular beam to convolve to.
+        target_beam (Beam): The desired Gaussian beam to convolve to. It may be elliptical,
+            but it must be at least as large as the input beam in every direction, so that
+            the input beam can be deconvolved from it; otherwise a ``ValueError`` is raised.
         boundary (str, optional): ``'wrap'`` applies periodic boundary conditions.
             ``'fill'`` pads the image to reduce wraparound effects and excludes the
             padded pixels from the valid convolution weights. Defaults to ``'fill'``.
