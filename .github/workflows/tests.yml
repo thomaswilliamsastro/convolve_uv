@@ -82,10 +82,20 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   # These give the same result on every OS, so they run once here instead of in
-  # every test job. Running `tox` locally still runs them all.
+  # every test job. Running `tox` locally still runs them all. They run twice, in
+  # parallel: with the newest dependencies and build requirements, and with the oldest
+  # ones that pyproject.toml allows, which is what checks that its minimum versions work.
   checks:
-    name: Checks (lint, typecheck, docs, wheel)
+    name: Checks (${{ matrix.name }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: lint, typecheck, docs, wheel
+            tox-envs: lint,typecheck,docs,wheel
+          - name: oldest dependencies
+            tox-envs: lint-oldestdeps,typecheck-oldestdeps,docs-oldestdeps,wheel-oldestdeps
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install uv
@@ -96,10 +106,12 @@ jobs:
         run: |
           uv tool install --python 3.14 tox --with tox-uv
       - name: Run the checks
-        run: tox -e lint,typecheck,docs,wheel
+        env:
+          TOX_ENVS: ${{ matrix.tox-envs }}
+        run: tox -e "$TOX_ENVS"
 
   # The required "Test" status check: it passes only if both the test matrix and
-  # the checks do.
+  # every one of the checks do.
   test-status:
     name: Test
     needs: [test, checks]
