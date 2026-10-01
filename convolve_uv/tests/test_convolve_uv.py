@@ -16,7 +16,7 @@ from spectral_cube import SpectralCube, VaryingResolutionSpectralCube, cube_util
 from spectral_cube.masks import BooleanArrayMask
 
 from .. import LargeCubeMemoryWarning, _convolve, convolve_uv
-from .._numerics import do_convolution
+from .._numerics import FWHM_TO_SIGMA, do_convolution
 from .helpers import (
     BOUNDARY_KEYWORDS,
     _create_anisotropic_wcs_cube,
@@ -422,6 +422,95 @@ class TestConvolveUV:
         assert np.allclose(flux_after, flux_before, rtol=1e-6, atol=0.0)
         # The sources really were blurred, so the conservation is not a matter of nothing changing
         assert np.count_nonzero(res[0] > 0.01 * res[0].max()) > 100
+
+    @staticmethod
+    def _kernel_covariance_pixels(target_beam: Beam, input_sigma_pix: float, pix: u.Quantity):
+        """The covariance of the convolution kernel in (x, y) pixels, worked out by hand.
+
+        The input beam is round. The position angle is measured from north towards east, and
+        the pixel x axis points west (RA decreases with x) while y points north.
+        """
+        sigma_major = (target_beam.major * FWHM_TO_SIGMA / pix).to_value(u.dimensionless_unscaled)
+        sigma_minor = (target_beam.minor * FWHM_TO_SIGMA / pix).to_value(u.dimensionless_unscaled)
+        pa = target_beam.pa.to_value(u.rad)
+        east, north = np.sin(pa), np.cos(pa)
+        major_xy = np.array([-east, north])
+        minor_xy = np.array([-north, -east])
+        covariance = sigma_major**2 * np.outer(major_xy, major_xy)
+        covariance += sigma_minor**2 * np.outer(minor_xy, minor_xy)
+        return covariance - input_sigma_pix**2 * np.eye(2)
+
+    @staticmethod
+    def _gaussian(covariance_xy: np.ndarray, dy: np.ndarray, dx: np.ndarray) -> np.ndarray:
+        """A unit-integral 2D Gaussian with the given (x, y) covariance, at offsets in pixels."""
+        inverse = np.linalg.inv(covariance_xy)
+        exponent = -0.5 * (
+            inverse[0, 0] * dx**2 + 2 * inverse[0, 1] * dx * dy + inverse[1, 1] * dy**2
+        )
+        density: np.ndarray = np.exp(exponent) / (2 * np.pi * np.sqrt(np.linalg.det(covariance_xy)))
+        return density
+
+    @pytest.mark.parametrize("boundary", BOUNDARY_KEYWORDS)
+    @pytest.mark.parametrize(
+        "target_beam",
+        [
+            Beam(major=1.8 * u.arcsec, minor=1.8 * u.arcsec, pa=0 * u.deg),
+            Beam(major=2.2 * u.arcsec, minor=1.5 * u.arcsec, pa=30 * u.deg),
+        ],
+        ids=["round", "elliptical rotated"],
+    )
+    def test_boundary_with_a_source_near_the_corner(self, target_beam: Beam, boundary: str):
+        """A source near the corner is blurred across the edge (wrap) or not (fill).
+
+        With ``wrap`` the image is periodic, so the blur that crosses an edge comes back in
+        at the opposite one: the result is the sum of the Gaussian over all the shifted
+        copies of the image. With ``fill`` there are no copies, so only the part inside the
+        image is kept and renormalized by the weight of the Gaussian that falls inside it.
+        Both are worked out here directly, from the Gaussian, not from the code.
+        """
+        ny = nx = 61
+        y0, x0 = 3, 4
+        pix_scale = 0.1 * u.arcsec
+        input_beam = Beam(major=1.0 * u.arcsec, minor=1.0 * u.arcsec, pa=0 * u.deg)
+        data = np.zeros((1, ny, nx))
+        data[0, y0, x0] = 1.0
+        cube = _create_test_cube(
+            x_size=nx, y_size=ny, vel_size=1, pix_scale=pix_scale, beam=input_beam
+        )
+        cube = SpectralCube(data=data * u.K, wcs=cube.wcs, beam=input_beam)
+        covariance = self._kernel_covariance_pixels(
+            target_beam, (input_beam.major * FWHM_TO_SIGMA / pix_scale).to_value(""), pix_scale
+        )
+        y, x = np.mgrid[0:ny, 0:nx]
+
+        res = convolve_uv(cube, target_beam, boundary=boundary).unmasked_data[0].value
+
+        if boundary == "wrap":
+            expected = np.sum(
+                [
+                    self._gaussian(covariance, y - y0 + i * ny, x - x0 + j * nx)
+                    for i, j in itertools.product(range(-3, 4), repeat=2)
+                ],
+                axis=0,
+            )
+        else:
+            offsets_y, offsets_x = np.mgrid[-ny : ny + 1, -nx : nx + 1]
+            weights = self._gaussian(covariance, offsets_y, offsets_x)
+            inside = np.array(
+                [
+                    [
+                        weights[py + ny - (ny - 1) : py + ny + 1, px + nx - (nx - 1) : px + nx + 1]
+                        for px in range(nx)
+                    ]
+                    for py in range(ny)
+                ]
+            ).sum(axis=(2, 3))
+            expected = self._gaussian(covariance, y - y0, x - x0) / inside
+        assert np.allclose(res, expected, rtol=0.0, atol=1e-9 * expected.max())
+        # The two boundaries really are different here: the corner opposite the source is a
+        # few pixels from it across the edges if the image wraps, and 9 sigma away if not
+        far_corner = expected[-1, -1] / expected.max()
+        assert far_corner > 0.01 if boundary == "wrap" else far_corner < 1e-3
 
     @pytest.mark.parametrize("common_beam_resolution", TEST_RESOLUTIONS)
     def test_convolve_slice(
