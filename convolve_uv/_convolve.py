@@ -1,6 +1,8 @@
 """High-level uv-plane convolution orchestration over SpectralCube/Projection.
 
-The numerical machinery (beam/pixel covariance, transfer functions, FFT
+The public names defined here, :func:`convolve_uv.convolve_uv` and
+:class:`convolve_uv.LargeCubeMemoryWarning`, are imported by the package, which is where
+they should be used from. The numerical machinery (beam/pixel covariance, transfer functions, FFT
 filtering, interpolation kernel construction, and 2D convolution) lives in
 :mod:`convolve_uv._numerics`.
 """

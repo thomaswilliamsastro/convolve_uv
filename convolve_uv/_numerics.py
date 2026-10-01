@@ -1,14 +1,14 @@
 """Numerical helpers underlying uv-plane convolution.
 
 This module holds the pure, per-slice numerical machinery used by
-:func:`convolve_uv.convolve_uv.convolve_uv`: beam/pixel covariance
+:func:`convolve_uv.convolve_uv`: beam/pixel covariance
 computation, the analytic Fourier transfer function, FFT-based filtering,
 NaN-interpolation kernel construction, and the 2D convolution routine
 (:func:`do_convolution`) that ties them together for a single image slice.
 
 High-level orchestration over ``SpectralCube``/``Projection`` objects (looping
 over channels, handling ``VaryingResolutionSpectralCube``, huge-cube memory
-warnings, etc.) lives in :mod:`convolve_uv.convolve_uv`.
+warnings, etc.) lives in :mod:`convolve_uv._convolve`.
 """
 
 import astropy.units as u
@@ -372,7 +372,7 @@ def do_convolution(
     """Convolve a single 2D image to a round Gaussian beam.
 
     This works on one image at a time. To convolve a full cube, use
-    :func:`~convolve_uv.convolve_uv.convolve_uv`, which calls this for each channel.
+    :func:`~convolve_uv.convolve_uv`, which calls this for each channel.
 
     Args:
         image_slice (Projection): A 2D image, such as a channel slice of a

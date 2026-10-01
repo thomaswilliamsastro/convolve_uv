@@ -16,6 +16,7 @@ from radio_beam.utils import BeamError
 from spectral_cube import SpectralCube, VaryingResolutionSpectralCube, cube_utils
 from spectral_cube.masks import BooleanArrayMask
 
+from .. import LargeCubeMemoryWarning, _convolve, convolve_uv
 from .._numerics import (
     _interpolate_nans,
     beam_covariance_en,
@@ -23,7 +24,6 @@ from .._numerics import (
     kernel_covariance_pixels,
     nan_interpolation_kernel,
 )
-from ..convolve_uv import LargeCubeMemoryWarning, convolve_uv
 
 TEST_RESOLUTIONS = [
     None,
@@ -1094,8 +1094,7 @@ class TestConvolveUV:
         The second call starts once the first is part-way through and finishes last, the
         order in which temporarily overriding the flag used to leave it stuck on True.
         """
-        module = sys.modules[convolve_uv.__module__]
-        original = module.do_convolution
+        original = do_convolution
         callers = itertools.count()
         lock = threading.Lock()
         first_inside = threading.Event()
@@ -1112,7 +1111,7 @@ class TestConvolveUV:
                 first_done.wait(30)
             return original(*args, **kwargs)
 
-        monkeypatch.setattr(module, "do_convolution", hold)
+        monkeypatch.setattr(_convolve, "do_convolution", hold)
         cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
         cube.allow_huge_operations = False
         target_beam = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
@@ -1671,9 +1670,8 @@ class TestCubeArgumentValidation:
         replaced by a recorder, so the call only raises the expected error if it is rejected
         before the warning and before any channel is convolved.
         """
-        module = sys.modules[convolve_uv.__module__]
         calls = []
-        monkeypatch.setattr(module, "do_convolution", lambda *args, **kwargs: calls.append(1))
+        monkeypatch.setattr(_convolve, "do_convolution", lambda *args, **kwargs: calls.append(1))
         monkeypatch.setattr(cube_utils, "MEMORY_THRESHOLD", 1)
         arguments = {
             "target_beam": Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg),
