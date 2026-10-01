@@ -4,12 +4,14 @@ GitHub builds its "Cite this repository" entry from CITATION.cff, and Zenodo bui
 record of every release from it. Both quietly ignore a file that is not valid (``cffconvert
 --validate`` checks that), and neither can tell that the keywords or the license here have drifted
 away from the ones on PyPI. This compares what the two files both state, so they are written down
-once in pyproject.toml and checked here, not trusted to be kept in step.
+once in pyproject.toml and checked here, not trusted to be kept in step. The DOI is written down in
+CITATION.cff and in the README badge, so this also checks that the two are the same.
 
 Usage: ``python tools/check_citation.py``, from anywhere. It needs PyYAML, which the ``wheel`` tox
 environments install.
 """
 
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -41,6 +43,13 @@ def check() -> list[str]:
         f"{author.get('given-names')} {author.get('family-names')}",
         project["authors"][0]["name"],
     )
+    doi = citation.get("doi")
+    if not isinstance(doi, str) or not re.fullmatch(r"10\.5281/zenodo\.\d+", doi):
+        problems.append(f"doi: CITATION.cff has {doi!r}, not a Zenodo DOI (10.5281/zenodo.NNN)")
+    elif f"https://doi.org/{doi}" not in (ROOT / "README.md").read_text():
+        problems.append(
+            f"doi: README.md does not link https://doi.org/{doi}, the DOI in CITATION.cff"
+        )
     return problems
 
 
@@ -52,6 +61,7 @@ def main() -> int:
     if not problems:
         print(
             "CITATION.cff agrees with pyproject.toml (keywords, license, title, repository, author)"
+            " and the README (DOI)"
         )
     return 1 if problems else 0
 

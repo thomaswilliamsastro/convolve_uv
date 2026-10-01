@@ -7,6 +7,7 @@
 [![readthedocs](https://readthedocs.org/projects/convolve-uv/badge/?version=latest&style=flat-square)](https://convolve-uv.readthedocs.io/en/latest)
 [![codecov](https://img.shields.io/codecov/c/gh/thomaswilliamsastro/convolve_uv?style=flat-square)](https://codecov.io/gh/thomaswilliamsastro/convolve_uv)
 [![License](https://img.shields.io/badge/license-GNUv3-blue.svg?label=License&style=flat-square)](LICENSE)
+[![DOI](https://img.shields.io/badge/10.5281%2Fzenodo.23087280-blue?label=DOI&style=flat-square)](https://doi.org/10.5281/zenodo.23087280)
 
 `convolve-uv` is a small Python package that allows for image convolution without loss of resolution.
 

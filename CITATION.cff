@@ -14,6 +14,9 @@ authors:
 repository-code: https://github.com/thomaswilliamsastro/convolve_uv
 repository-artifact: https://pypi.org/project/convolve-uv/
 url: https://convolve-uv.readthedocs.io/en/latest
+# The Zenodo DOI for all versions of the software, which always resolves to the newest release. A
+# version DOI would point at one release and be out of date by the next.
+doi: 10.5281/zenodo.23087280
 license: GPL-3.0-or-later
 keywords:
   - astronomy
@@ -22,7 +25,7 @@ keywords:
   - uv-plane
   - spectral cube
   - beam
-# The date of the latest release (v0.4.0). Only its year appears in a citation, so it stays correct
+# The date of the latest release. Only its year appears in a citation, so it stays correct
 # until the year changes; update it when releasing. There is deliberately no `version`: it comes from
 # the git tags (setuptools_scm), so a value here would go out of date with every release.
 date-released: "2026-10-01"

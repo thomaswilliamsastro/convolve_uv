@@ -100,9 +100,10 @@ for tags or for the PyPI upload. So do it when you are ready for a record that i
   version of its own, with `stable` following the newest. Check that the build for the tag passed.
 - The GitHub release is marked **Latest**.
 - On [Zenodo](https://zenodo.org/search?q=convolve_uv) a record for the release appears, described from
-  `CITATION.cff`, with the tag as its version. The first time, copy the DOI for *all versions* (the concept
-  DOI) into `CITATION.cff` as `doi:` and add a DOI badge to the README, in a pull request after the release.
-  It cannot be added earlier, because the DOI does not exist until the first record does.
+  `CITATION.cff`, with the tag as its version. The DOI in `CITATION.cff` and in the README badge is the one
+  for *all versions* (the concept DOI, 10.5281/zenodo.23087280), which does not change from release to
+  release, so there is nothing to update. It resolves to the newest record. Do not replace it with a version
+  DOI, which would be out of date after the next release.
 
 ## If something goes wrong
 
