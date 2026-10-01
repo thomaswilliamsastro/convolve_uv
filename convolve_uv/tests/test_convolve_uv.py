@@ -906,8 +906,9 @@ class TestArraySizeLimits:
     ROUND_BEAM = Beam(major=1.5 * u.arcsec, minor=1.5 * u.arcsec, pa=0 * u.deg)
 
     @staticmethod
-    def _convolve(operation: str, **kwargs):
-        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+    def _convolve(operation: str, cube=None, **kwargs):
+        if cube is None:
+            cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
         if operation == "convolve_uv":
             return convolve_uv(image=cube, **kwargs)
         return do_convolution(image_slice=cube[0], **kwargs)
@@ -938,18 +939,36 @@ class TestArraySizeLimits:
 
     @pytest.mark.parametrize("operation", ["convolve_uv", "do_convolution"])
     @pytest.mark.parametrize("boundary", BOUNDARY_KEYWORDS)
-    def test_wide_beam_nan_kernel_is_rejected(self, operation: str, boundary: str):
-        """A beam far wider than the pixel scale makes the NaN kernel too large.
+    def test_wide_beam_nan_kernel_is_clipped_to_the_image(self, operation: str, boundary: str):
+        """A beam far wider than the pixel scale does not make the NaN kernel too large.
+
+        The kernel is clipped to the image, which is all that it can reach.
+        """
+        result = self._convolve(
+            operation,
+            target_beam=self.WIDE_BEAM,
+            boundary=boundary,
+            nan_treatment="interpolate",
+            pad_sigma=0,
+        )
+        result_data = result.unmasked_data[:].value if operation == "convolve_uv" else result
+
+        assert np.all(np.isfinite(result_data))
+
+    @pytest.mark.parametrize("operation", ["convolve_uv", "do_convolution"])
+    def test_wide_beam_nan_kernel_for_a_long_image_is_rejected(self, operation: str):
+        """The kernel can only be as large as the image is long, and that can be too large.
 
         This does not depend on pad_sigma or the boundary.
         """
+        cube = _create_test_cube(x_size=2**14 + 1, y_size=1, vel_size=1)
         with pytest.raises(ValueError, match="The NaN interpolation kernel would need about"):
             self._convolve(
                 operation,
+                cube=cube,
                 target_beam=self.WIDE_BEAM,
-                boundary=boundary,
+                boundary="wrap",
                 nan_treatment="interpolate",
-                pad_sigma=0,
             )
 
     @pytest.mark.parametrize("operation", ["convolve_uv", "do_convolution"])
