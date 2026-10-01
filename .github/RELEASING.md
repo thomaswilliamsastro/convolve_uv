@@ -21,6 +21,9 @@ starts with **Breaking:**, as for [#56](https://github.com/thomaswilliamsastro/c
   `Test` and `Check Changelog`.
 - Read `## [Unreleased]` in `CHANGELOG.md`. Every change users can see since the last tag should be there,
   and breaking changes should be marked. Dependabot adds its own entries under `### Dependencies`.
+- `CITATION.cff` is complete: the title, the abstract, the authors with their affiliation and ORCID iD, and the
+  keywords. Zenodo builds the permanent record of the release from it. `tox -e wheel` validates the file and
+  compares it with `pyproject.toml`. Do not add a `.zenodo.json`, which would override `CITATION.cff`.
 
 ## 1. Cut the changelog
 
@@ -76,6 +79,9 @@ gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file notes.md
 rm notes.md
 ```
 
+Publishing the GitHub release is also what creates the Zenodo record: the webhook listens for releases, not
+for tags or for the PyPI upload. So do it when you are ready for a record that is hard to remove.
+
 ## 5. Check it
 
 - PyPI shows the new version at <https://pypi.org/project/convolve-uv/>. In a fresh environment,
@@ -84,6 +90,10 @@ rm notes.md
 - On [Read the Docs](https://convolve-uv.readthedocs.io), `latest` is built from `main` and every tag gets a
   version of its own, with `stable` following the newest. Check that the build for the tag passed.
 - The GitHub release is marked **Latest**.
+- On [Zenodo](https://zenodo.org/search?q=convolve_uv) a record for the release appears, described from
+  `CITATION.cff`, with the tag as its version. The first time, copy the DOI for *all versions* (the concept
+  DOI) into `CITATION.cff` as `doi:` and add a DOI badge to the README, in a pull request after the release.
+  It cannot be added earlier, because the DOI does not exist until the first record does.
 
 ## If something goes wrong
 
@@ -114,6 +124,12 @@ For the project `convolve-uv` on PyPI, under *Publishing*, add a GitHub trusted 
 
 PyPI matches on these, so the workflow's file name and the environment name in `publish.yml` have to stay as
 they are, or be changed on PyPI at the same time.
+
+### The Zenodo integration
+
+On Zenodo, under *GitHub*, the switch for `thomaswilliamsastro/convolve_uv` is on. That added a webhook to
+the repository that listens for `release` events. Zenodo only archives releases published after the switch
+was turned on, so v0.4.0 and earlier have no record.
 
 ### The `release tags` ruleset on GitHub
 
