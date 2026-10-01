@@ -8,8 +8,8 @@ Pushing a tag that starts with `v` runs the `Publish` workflow
 ([`publish.yml`](workflows/publish.yml)). It checks that the tagged commit is on `main`, runs the full test
 workflow, builds the source distribution and the wheel, checks that the tag matches the version of what it
 built, installs each of the two files into a clean environment and uses it (`tools/check_install.py`), and then
-uploads both to PyPI with trusted publishing, so there is no API token. Nothing else is automatic: the
-GitHub release is written by hand (step 4).
+uploads both to PyPI with trusted publishing, so there is no API token. The upload waits for your approval
+(step 3). Nothing else is automatic: the GitHub release is written by hand (step 4).
 
 Versions follow [Semantic Versioning](https://semver.org), tagged `vMAJOR.MINOR.PATCH`. While the major
 version is 0, a breaking change may come in a minor release. Mark it in the changelog with an entry that
@@ -55,8 +55,8 @@ Only tag a commit that is on `main`. The workflow refuses any other: the build j
 main" and nothing is published. That guards against a mistake, not against someone who edits the workflow
 in the tagged commit, since a workflow runs from its own copy in that commit. What stops that is the
 `release tags` ruleset (see the setup at the end): only its bypass actor, the repository owner, can create,
-move or delete a `v*` tag. It does not stop the owner. The `pypi` environment only requires that the tag
-starts with `v`.
+move or delete a `v*` tag. It does not stop the owner. The `pypi` environment only accepts a tag that starts
+with `v`, and then waits for an approval before the upload.
 
 ## 3. Watch the publish
 
@@ -64,6 +64,13 @@ Open the `Publish` run for the tag in the Actions tab. Its jobs are `Build sourc
 checks, the build, `twine check` and the smoke test of the wheel and the sdist), `Run tests` (the whole test
 workflow) and `Upload to PyPI`, which needs the other two. The upload does not start unless all of that
 passes.
+
+When it has all passed, the run stops at `Upload to PyPI` with "Waiting for review", because the `pypi`
+environment requires your approval. This is the last look before something that cannot be undone: PyPI
+never lets a file name be used twice. Check that the version the smoke test printed in the build job (for
+example `convolve_uv 0.5.0 from ...`) is the one you meant, then choose **Review deployments**, tick `pypi`
+and choose **Approve and deploy**. Choosing **Reject** instead uploads nothing; then fix the problem as
+under *If something goes wrong*.
 
 To rehearse everything except the release, choose **Run workflow** for `Publish` on a branch (for example
 the release-prep branch, before merging it). That builds, checks and smoke-tests the files and publishes
@@ -101,7 +108,8 @@ for tags or for the PyPI upload. So do it when you are ready for a record that i
   request. Then delete the tag (`git push --delete origin vX.Y.Z` and `git tag -d vX.Y.Z`) and tag the fixed
   commit again.
 - **The upload fails** (for example because the trusted publisher on PyPI does not match). Fix the cause,
-  then use **Re-run failed jobs** on the same run. If that is no longer possible, choose **Run workflow**
+  then use **Re-run failed jobs** on the same run (approve the deployment again if it asks). If that is no
+  longer possible, choose **Run workflow**
   for `Publish` and pick the tag `vX.Y.Z` as the ref to run from: that repeats the whole release run,
   tests and upload included. Either way PyPI refuses files it already has, so this is only for an upload
   that did not complete.
@@ -140,5 +148,9 @@ early (see *If something goes wrong*). Deleting the ruleset removes the protecti
 
 ### The `pypi` environment on GitHub
 
-The repository has an environment called `pypi`, and only tags matching `v*` can deploy to it. It has no
-required reviewers, so a release needs no manual approval.
+The repository has an environment called `pypi`. Only tags matching `v*` can deploy to it, and each
+deployment needs approval from a required reviewer, the repository owner. Self-review is allowed, because
+the owner is the only collaborator: with it blocked nobody could approve a release. Administrators can
+bypass the protection rules. This is a deliberate pause before an upload that cannot be undone, not a
+security boundary: any token that can push a tag could also approve as the owner. To remove it, clear the
+reviewers under *Settings*, *Environments*, `pypi`.
