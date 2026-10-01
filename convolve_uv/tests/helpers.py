@@ -1,5 +1,7 @@
 """Builders shared by the test modules."""
 
+import io
+
 import astropy.units as u
 import numpy as np
 import numpy.typing as npt
@@ -8,10 +10,24 @@ from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 from spectral_cube import SpectralCube, VaryingResolutionSpectralCube
 
+from .. import convolve_uv
+from .._numerics import do_convolution
+
 DEFAULT_BEAM = Beam(major=0.85 * u.arcsec, minor=0.65 * u.arcsec, pa=45 * u.deg)
 
 BOUNDARY_KEYWORDS = [
     "wrap",
+    "fill",
+]
+TEST_RESOLUTIONS = [
+    None,
+    1 * u.arcsec,
+    1.5 * u.arcsec,
+    Beam(major=1.5 * u.arcsec, minor=1.3 * u.arcsec, pa=45 * u.deg),
+]
+
+NAN_TREATMENT_KEYWORDS = [
+    "interpolate",
     "fill",
 ]
 
@@ -213,3 +229,23 @@ def _get_common_beam(
     common_beam = Beam(major=bmaj, minor=bmaj, pa=0 * u.deg)
 
     return common_beam
+
+
+def _run_convolution(operation: str, image, **kwargs):
+    """Run either public convolution entry point on an image.
+
+    Args:
+        operation (str): ``"convolve_uv"`` or ``"do_convolution"``.
+        image: A cube (for ``convolve_uv``) or a projection (for ``do_convolution``).
+        **kwargs: Passed on to the chosen function.
+    """
+    if operation == "convolve_uv":
+        return convolve_uv(image=image, **kwargs)
+    return do_convolution(image_slice=image, **kwargs)
+
+
+class _FakeTerminal(io.StringIO):
+    """A writable stand-in for standard output that claims to be a terminal."""
+
+    def isatty(self) -> bool:
+        return True
