@@ -88,6 +88,11 @@ user-visible, ask a maintainer to add the `no changelog` label. Dependabot's ent
 - Pull requests are merged by squashing, so each becomes a single commit on `main` titled after the pull
   request. A clear title and description are what end up in the history.
 
+## Releases
+
+The maintainer makes releases by tagging `main`. The steps, and the one-off PyPI setup behind them, are in
+[`.github/RELEASING.md`](.github/RELEASING.md).
+
 ## Licence
 
 `convolve_uv` is distributed under the [GPL-3.0-or-later](LICENSE) licence. By contributing, you agree that
