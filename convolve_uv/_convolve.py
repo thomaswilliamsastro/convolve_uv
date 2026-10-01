@@ -45,7 +45,7 @@ def convolve_uv(
     preserve_nan: bool = False,
     show_progress: bool = True,
 ) -> Projection | SpectralCube:
-    """Convolve a 2D projection to a round Gaussian beam exactly in uv space.
+    """Convolve a spectral cube or projection to a Gaussian beam exactly in uv space.
 
     The spatial Gaussian transfer function is evaluated analytically on the DFT
     grid.  No image-plane convolution kernel is sampled, so sub-pixel kernels are
@@ -57,7 +57,9 @@ def convolve_uv(
     Args:
         image (Projection | SpectralCube | VaryingResolutionSpectralCube): Either a full
             SpectralCube instance, or a projection of a full 3D SpectralCube.
-        target_beam (Beam): The desired circular beam to convolve to.
+        target_beam (Beam): The desired Gaussian beam to convolve to. It may be elliptical,
+            but it must be at least as large as the input beam in every direction, so that
+            the input beam can be deconvolved from it; otherwise a ``ValueError`` is raised.
         boundary (str, optional): ``'wrap'`` applies periodic boundary conditions.
             ``'fill'`` pads the image to reduce wraparound effects and excludes the
             padded pixels from the valid convolution weights. Defaults to ``'fill'``.
