@@ -3,10 +3,12 @@
 import astropy.units as u
 import numpy as np
 import pytest
+from astropy.convolution import convolve_fft, interpolate_replace_nans
 from radio_beam import Beam
 from spectral_cube import SpectralCube
 
 from .._numerics import (
+    _MIN_INTERPOLATION_WEIGHT,
     _interpolate_nans,
     beam_covariance_en,
     do_convolution,
@@ -307,6 +309,41 @@ class TestNanInterpolationKernel:
         with pytest.raises(ValueError, match="The NaN interpolation kernel would need about"):
             nan_interpolation_kernel(np.eye(2) * 1e8)
 
+    def test_max_half_size_clips_the_kernel(self):
+        """A clipped kernel is smaller, still has unit sum, and keeps the values at its centre."""
+        covariance = np.eye(2) * 5.0**2
+        full = nan_interpolation_kernel(covariance)
+        clipped = nan_interpolation_kernel(covariance, max_half_size=12)
+
+        assert full.shape == (81, 81)
+        assert clipped.shape == (25, 25)
+        assert np.isclose(clipped.sum(), 1.0, rtol=0.0, atol=1e-12)
+        # Same shape of Gaussian, only renormalized over the smaller area
+        ratio = clipped / full[28:53, 28:53]
+        assert np.allclose(ratio, ratio[0, 0], rtol=1e-12, atol=0.0)
+
+    @pytest.mark.parametrize("max_half_size", [None, 40, 1000])
+    def test_max_half_size_beyond_the_kernel_changes_nothing(self, max_half_size: int | None):
+        """A clip at or beyond the kernel's own half-size leaves it as it was."""
+        covariance = np.eye(2) * 5.0**2
+
+        assert np.array_equal(
+            nan_interpolation_kernel(covariance, max_half_size=max_half_size),
+            nan_interpolation_kernel(covariance),
+        )
+
+    def test_max_half_size_avoids_the_size_limit(self):
+        """The size limit applies to the clipped kernel, so a wide kernel can be clipped to fit."""
+        kernel = nan_interpolation_kernel(np.eye(2) * 1e8, max_half_size=10)
+
+        assert kernel.shape == (21, 21)
+
+    def test_max_half_size_zero_gives_a_single_pixel(self):
+        """The smallest clip, for a one pixel image, gives the one-pixel kernel."""
+        assert np.array_equal(
+            nan_interpolation_kernel(np.eye(2) * 1e4, max_half_size=0), np.ones((1, 1))
+        )
+
 
 class TestDoConvolution:
     @pytest.mark.parametrize("cube_type", ["spectral", "varying_resolution", "one_channel"])
@@ -401,6 +438,78 @@ class TestNanInterpolationEdges:
         nan_mask = np.isnan(data)
         assert np.allclose(result[nan_mask], expected[nan_mask], rtol=1e-9, atol=0.0)
         assert np.array_equal(result[~nan_mask], data[~nan_mask])
+
+    @staticmethod
+    def _interpolate_with_unclipped_kernel(data: np.ndarray, covariance: np.ndarray) -> np.ndarray:
+        """Interpolate NaNs with the whole kernel, as was done before it was clipped."""
+        interpolated: np.ndarray = interpolate_replace_nans(
+            data,
+            nan_interpolation_kernel(covariance),
+            convolve=convolve_fft,
+            boundary="fill",
+            fill_value=np.nan,
+            min_wt=_MIN_INTERPOLATION_WEIGHT,
+        )
+        return interpolated
+
+    @pytest.mark.parametrize("nan_fraction", [0.05, 0.5, 0.97])
+    @pytest.mark.parametrize(
+        "sigma_xy",
+        [(0.5, 0.5), (3.0, 3.0), (6.0, 2.0), (15.0, 15.0), (40.0, 8.0)],
+        ids=lambda sigma: f"sigma {sigma[0]}x{sigma[1]}",
+    )
+    @pytest.mark.parametrize("shape", [(9, 12), (30, 24), (64, 40)])
+    def test_clipping_the_kernel_to_the_image_changes_nothing(
+        self, shape: tuple[int, int], sigma_xy: tuple[float, float], nan_fraction: float
+    ):
+        """The kernel is clipped to the image, which gives the same result as the whole kernel.
+
+        Most of these have a kernel (8 sigma) bigger than the image, so they are clipped,
+        and the sparse ones are close to the limit below which a NaN is not interpolated.
+        """
+        rng = np.random.default_rng(2)
+        data = rng.normal(size=shape) + 5.0
+        data[rng.random(shape) < nan_fraction] = np.nan
+        covariance = np.diag(np.square(sigma_xy))
+
+        result = _interpolate_nans(data, covariance)
+        expected = self._interpolate_with_unclipped_kernel(data, covariance)
+
+        assert np.array_equal(np.isnan(result), np.isnan(expected))
+        assert np.allclose(result, expected, rtol=1e-9, atol=1e-9, equal_nan=True)
+
+    def test_clipping_by_less_than_the_image_does_change_the_result(self):
+        """The test above could pass for the wrong reason, so check that it can tell."""
+        rng = np.random.default_rng(3)
+        data = rng.normal(size=(30, 30)) + 5.0
+        data[rng.random(data.shape) < 0.3] = np.nan
+        covariance = np.eye(2) * 12.0**2
+        too_small = nan_interpolation_kernel(covariance, max_half_size=5)
+        too_small_result = interpolate_replace_nans(
+            data,
+            too_small,
+            convolve=convolve_fft,
+            boundary="fill",
+            fill_value=np.nan,
+            min_wt=_MIN_INTERPOLATION_WEIGHT,
+        )
+
+        expected = self._interpolate_with_unclipped_kernel(data, covariance)
+
+        assert not np.allclose(too_small_result, expected, rtol=1e-9, atol=1e-9, equal_nan=True)
+
+    def test_a_beam_far_wider_than_the_image_is_interpolated(self):
+        """A kernel that would be huge, but is clipped to the image, is no longer rejected."""
+        data = np.full((16, 16), np.nan)
+        data[0, 0] = 7.0
+
+        result = _interpolate_nans(data, np.eye(2) * 1e4**2)
+
+        assert np.allclose(result, 7.0, rtol=0.0, atol=1e-9)
+
+    def test_a_one_pixel_image_is_interpolated_without_error(self):
+        """The smallest image has nothing to interpolate from, so its NaN stays."""
+        assert np.isnan(_interpolate_nans(np.full((1, 1), np.nan), np.eye(2) * 4.0)).all()
 
     @pytest.mark.parametrize("sigma", [2.0, 5.0, 10.0])
     @pytest.mark.parametrize("layout", list(NAN_LAYOUTS))

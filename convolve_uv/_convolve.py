@@ -71,9 +71,9 @@ def convolve_uv(
             side when using ``boundary='fill'``. Ignored and not validated when
             ``boundary='wrap'``. For ``'fill'``, it must be finite and non-negative;
             zero is allowed. Defaults to 8.0. The padded image (and, separately, the
-            NaN interpolation kernel) may not exceed 2**28 pixels; larger sizes raise
-            a ``ValueError``, for example when convolving to a beam far wider than
-            the pixel scale.
+            NaN interpolation kernel, which is clipped to the longest side of the image)
+            may not exceed 2**28 pixels; larger sizes raise a ``ValueError``, for example
+            when convolving to a beam far wider than the pixel scale.
         nan_treatment (str, optional): The method used to handle NaNs in the input slice:
 
             * ``interpolate`` (default): ``NaN`` values are replaced with interpolated

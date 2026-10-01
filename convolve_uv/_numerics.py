@@ -237,6 +237,7 @@ def kernel_covariance_pixels(
 def nan_interpolation_kernel(
     covariance_xy: np.ndarray,
     pad_sigma: float = 8.0,
+    max_half_size: int | None = None,
 ) -> np.ndarray:
     """Build a normalized Gaussian kernel array for NaN interpolation.
 
@@ -251,6 +252,11 @@ def nan_interpolation_kernel(
         pad_sigma (float, optional): Kernel half-size, in units of the largest marginal
             standard deviation of the covariance matrix. Must be finite and
             non-negative; zero is allowed. Defaults to 8.0.
+        max_half_size (int, optional): Largest allowed kernel half-size, in pixels, which
+            clips the kernel, which is then normalized to unit sum. No two pixels of an
+            image are further apart than its longest side minus one, so a larger kernel
+            only adds offsets that never reach the image. Must not be negative.
+            Defaults to None, meaning no clip.
 
     Returns:
         np.ndarray: A square, odd-sized, unit-sum 2D Gaussian kernel array.
@@ -273,6 +279,8 @@ def nan_interpolation_kernel(
 
     with np.errstate(over="ignore"):
         half_size = max(float(np.ceil(pad_sigma * sigma_max)), 1.0)
+    if max_half_size is not None:
+        half_size = min(half_size, float(max_half_size))
     _check_array_size(
         (2.0 * half_size + 1.0) ** 2,
         "The NaN interpolation kernel",
@@ -365,7 +373,10 @@ def _interpolate_nans(data: np.ndarray, covariance_xy: np.ndarray) -> np.ndarray
         np.ndarray: A copy of ``data`` with its NaNs replaced where there is valid data
         within reach of the kernel, and left as NaN where there is not.
     """
-    kernel = nan_interpolation_kernel(covariance_xy)
+    # No pixel is further from another than the longest side of the image minus one, so the
+    # part of the kernel beyond that never touches data. Clipping it saves a lot of memory
+    # and time when the beam is much wider than the image.
+    kernel = nan_interpolation_kernel(covariance_xy, max_half_size=max(data.shape) - 1)
 
     # astropy gives the padding around the image a weight of 1 (valid data) for any
     # finite fill_value, which biases the result towards that value near the edges.
@@ -414,9 +425,9 @@ def do_convolution(
             side when using ``boundary='fill'``. Ignored and not validated when
             ``boundary='wrap'``. For ``'fill'``, it must be finite and non-negative;
             zero is allowed. Defaults to 8.0. The padded image (and, separately, the
-            NaN interpolation kernel) may not exceed 2**28 pixels; larger sizes raise
-            a ``ValueError``, for example when convolving to a beam far wider than
-            the pixel scale.
+            NaN interpolation kernel, which is clipped to the longest side of the image)
+            may not exceed 2**28 pixels; larger sizes raise a ``ValueError``, for example
+            when convolving to a beam far wider than the pixel scale.
         nan_treatment (str, optional): The method used to handle NaNs in the input slice:
 
             * ``interpolate`` (default): ``NaN`` values are replaced with interpolated
