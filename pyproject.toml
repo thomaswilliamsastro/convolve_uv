@@ -7,6 +7,14 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
+keywords = [
+    "astronomy",
+    "radio astronomy",
+    "convolution",
+    "uv-plane",
+    "spectral cube",
+    "beam",
+]
 
 authors = [
     {name = "Thomas Williams", email = "thomas.g.williams@manchester.ac.uk"},
@@ -27,6 +35,8 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: 3 :: Only",
+
+    "Topic :: Scientific/Engineering :: Astronomy",
 ]
 
 dependencies = [
@@ -59,6 +69,7 @@ docs = [
 
 [project.urls]
 "Homepage" = "https://github.com/thomaswilliamsastro/convolve_uv"
+"Documentation" = "https://convolve-uv.readthedocs.io/en/stable/"
 "Bug Reports" = "https://github.com/thomaswilliamsastro/convolve_uv/issues"
 "Source" = "https://github.com/thomaswilliamsastro/convolve_uv"
 
