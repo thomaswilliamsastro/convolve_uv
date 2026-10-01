@@ -50,9 +50,10 @@ git push origin vX.Y.Z
 
 Only tag a commit that is on `main`. The workflow refuses any other: the build job fails with "is not on
 main" and nothing is published. That guards against a mistake, not against someone who edits the workflow
-in the tagged commit, since a workflow runs from its own copy in that commit. What would stop that is a
-repository ruleset that limits who can create `v*` tags, which is not set up yet. The `pypi` environment
-only requires that the tag starts with `v`.
+in the tagged commit, since a workflow runs from its own copy in that commit. What stops that is the
+`release tags` ruleset (see the setup at the end): only its bypass actor, the repository owner, can create,
+move or delete a `v*` tag. It does not stop the owner. The `pypi` environment only requires that the tag
+starts with `v`.
 
 ## 3. Watch the publish
 
@@ -113,6 +114,13 @@ For the project `convolve-uv` on PyPI, under *Publishing*, add a GitHub trusted 
 
 PyPI matches on these, so the workflow's file name and the environment name in `publish.yml` have to stay as
 they are, or be changed on PyPI at the same time.
+
+### The `release tags` ruleset on GitHub
+
+Under *Settings*, *Rules*, *Rulesets*, the ruleset `release tags` targets tags matching `refs/tags/v*`. It
+restricts creating, updating and deleting them, and its only bypass actor is the repository owner, set up
+the same way as on the `main` ruleset, so that the owner can still tag a release, and delete a tag made too
+early (see *If something goes wrong*). Deleting the ruleset removes the protection.
 
 ### The `pypi` environment on GitHub
 
