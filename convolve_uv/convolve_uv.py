@@ -75,7 +75,11 @@ def convolve_uv(
               inside the image are used. A ``NaN`` with no valid data within reach of
               the kernel (about five kernel widths) stays ``NaN`` and is excluded from
               the convolution. Note that if the kernel has a sum equal to zero, NaN
-              interpolation is not possible and will raise an exception.
+              interpolation is not possible and will raise an exception. An image that
+              already has the target beam is returned unchanged, because there is no
+              kernel to interpolate with: its ``NaN`` values stay ``NaN``. In a cube whose
+              channels have different beams, this means ``NaN`` values are interpolated
+              in every channel except those already at the target beam.
             * ``fill``: ``NaN`` values are replaced by ``fill_value`` prior to
               convolution.
         preserve_nan (bool, optional): After performing convolution, should pixels that

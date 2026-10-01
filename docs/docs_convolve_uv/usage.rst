@@ -58,3 +58,14 @@ Do this when calling ``convolve_uv`` from a thread other than the main one (for 
 a thread pool, or a web server): the progress bar installs a signal handler, which Python only
 allows in the main thread, so on a terminal the call fails with
 ``ValueError: signal only works in main thread of the main interpreter``.
+
+Channels that already have the target beam
+------------------------------------------
+
+An image that already has the target beam needs no convolution, so ``convolve_uv`` returns
+its data unchanged. With the default ``nan_treatment='interpolate'`` this means its ``NaN``
+values are left as ``NaN``, because there is no kernel to interpolate them with, whereas
+``NaN`` values in every other channel are interpolated. This matters when convolving a cube
+with a varying resolution to its common beam, where the channel with the widest beam already
+matches the target. Use ``nan_treatment='fill'`` to treat every channel the same way, or
+``preserve_nan=True`` to put every ``NaN`` back after the convolution.
