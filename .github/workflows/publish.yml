@@ -1,6 +1,11 @@
 name: Publish
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  # Run by hand from a branch to rehearse the build, the checks and the smoke test: nothing is
+  # published. Run from a v* tag to publish that tag again, for example after a failed upload.
+  workflow_dispatch:
 
 # Least-privilege default; the publish job below narrowly escalates to the
 # id-token permission required for PyPI Trusted Publishing (OIDC).
@@ -22,6 +27,18 @@ jobs:
         with:
           # Full history and tags, so setuptools_scm can work out the version.
           fetch-depth: 0
+      # The upload below depends on this job, so a tag on any other commit is never published. A
+      # workflow runs from the tagged commit's own copy of itself, so this guards against a
+      # mistake rather than against someone who edits it: restrict who may create v* tags for that.
+      - name: Check the release tag is on main
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME ($GITHUB_SHA) is not on main. Tag the release commit on main."
+            exit 1
+          fi
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -47,6 +64,21 @@ jobs:
               exit 1
             fi
           done
+      # Install the exact files that will be uploaded, each into a clean environment, and use
+      # them. The tests run against the checkout, so they would not notice a wheel or an sdist
+      # that cannot be installed, or that is missing a file. -I keeps the checkout off sys.path.
+      - name: Smoke test the built artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(basename dist/*.whl | cut -d- -f2)"
+          for artifact in dist/*.whl dist/*.tar.gz; do
+            env_dir="$RUNNER_TEMP/smoke-$(basename "$artifact")"
+            python -m venv "$env_dir"
+            PIP_DISABLE_PIP_VERSION_CHECK=1 "$env_dir/bin/python" -m pip install --quiet "$artifact"
+            echo "Smoke testing $(basename "$artifact")"
+            "$env_dir/bin/python" -I "$GITHUB_WORKSPACE/tools/check_install.py" "$version"
+          done
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist
@@ -56,7 +88,7 @@ jobs:
   # a failing test can never be published.
   tests:
     name: Run tests
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
     uses: ./.github/workflows/tests.yml
@@ -67,7 +99,7 @@ jobs:
     name: Upload to PyPI
     needs: [build-sdist-and-wheel, tests]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && startsWith(github.ref, 'refs/tags/v')
     # Restricts this job to the "pypi" GitHub Environment. Configure it under
     # repository Settings > Environments with a deployment protection rule
     # (e.g. "Deployment branches and tags" limited to `v*` tags) so only

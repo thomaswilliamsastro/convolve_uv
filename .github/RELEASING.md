@@ -5,10 +5,11 @@ when the package is built, so there is no version number to edit in the code. Be
 builds as a development version such as `0.4.1.dev33+g4459db6`.
 
 Pushing a tag that starts with `v` runs the `Publish` workflow
-([`publish.yml`](workflows/publish.yml)). It runs the full test workflow, builds the source distribution
-and the wheel, checks that the tag matches the version of what it built, and uploads both to PyPI with
-trusted publishing, so there is no API token. Nothing else is automatic: the GitHub release is written by
-hand (step 4).
+([`publish.yml`](workflows/publish.yml)). It checks that the tagged commit is on `main`, runs the full test
+workflow, builds the source distribution and the wheel, checks that the tag matches the version of what it
+built, installs each of the two files into a clean environment and uses it (`tools/check_install.py`), and then
+uploads both to PyPI with trusted publishing, so there is no API token. Nothing else is automatic: the
+GitHub release is written by hand (step 4).
 
 Versions follow [Semantic Versioning](https://semver.org), tagged `vMAJOR.MINOR.PATCH`. While the major
 version is 0, a breaking change may come in a minor release. Mark it in the changelog with an entry that
@@ -47,14 +48,22 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-Only tag a commit that is on `main`. The workflow does not check this: all that the `pypi` environment
-requires is that the tag starts with `v`.
+Only tag a commit that is on `main`. The workflow refuses any other: the build job fails with "is not on
+main" and nothing is published. That guards against a mistake, not against someone who edits the workflow
+in the tagged commit, since a workflow runs from its own copy in that commit. What would stop that is a
+repository ruleset that limits who can create `v*` tags, which is not set up yet. The `pypi` environment
+only requires that the tag starts with `v`.
 
 ## 3. Watch the publish
 
-Open the `Publish` run for the tag in the Actions tab. Its jobs are `Build source distribution`,
-`Run tests` (the whole test workflow) and `Upload to PyPI`, which needs the other two. The upload does not
-start unless the build, the tag check and every test pass.
+Open the `Publish` run for the tag in the Actions tab. Its jobs are `Build source distribution` (the tag
+checks, the build, `twine check` and the smoke test of the wheel and the sdist), `Run tests` (the whole test
+workflow) and `Upload to PyPI`, which needs the other two. The upload does not start unless all of that
+passes.
+
+To rehearse everything except the release, choose **Run workflow** for `Publish` on a branch (for example
+the release-prep branch, before merging it). That builds, checks and smoke-tests the files and publishes
+nothing, because only a run on a `v*` tag runs the tests and the upload.
 
 ## 4. Create the GitHub release
 
@@ -77,10 +86,14 @@ rm notes.md
 
 ## If something goes wrong
 
-- **The tests or the tag check fail.** Nothing was uploaded. Fix the problem with a pull request. Then
-  delete the tag (`git push --delete origin vX.Y.Z` and `git tag -d vX.Y.Z`) and tag the fixed commit again.
+- **The tests, a tag check or the smoke test fail.** Nothing was uploaded. Fix the problem with a pull
+  request. Then delete the tag (`git push --delete origin vX.Y.Z` and `git tag -d vX.Y.Z`) and tag the fixed
+  commit again.
 - **The upload fails** (for example because the trusted publisher on PyPI does not match). Fix the cause,
-  then use **Re-run failed jobs** on the same run. The workflow has no manual trigger.
+  then use **Re-run failed jobs** on the same run. If that is no longer possible, choose **Run workflow**
+  for `Publish` and pick the tag `vX.Y.Z` as the ref to run from: that repeats the whole release run,
+  tests and upload included. Either way PyPI refuses files it already has, so this is only for an upload
+  that did not complete.
 - **A bad release was published.** PyPI does not let a file name be used twice, so a published version
   cannot be replaced. Yank it on PyPI (the project's *Manage* page, then the release) and publish a new
   patch release.
