@@ -376,7 +376,8 @@ def do_convolution(
 
     Args:
         image_slice (Projection): A 2D image, such as a channel slice of a
-            ``SpectralCube`` (``cube[0]``) or a ``Projection``. A cube is not accepted.
+            ``SpectralCube`` (``cube[0]``) or a ``Projection``. A cube is not accepted and
+            raises a ``TypeError``.
         target_beam (Beam): The desired circular beam to convolve to.
         boundary (str, optional): ``'wrap'`` applies periodic boundary conditions.
             ``'fill'`` pads the image to reduce wraparound effects and excludes the
@@ -408,6 +409,15 @@ def do_convolution(
     Returns:
         np.ndarray: The convolved image, with the same shape and dtype as ``image_slice``.
     """
+    # A cube would only fail much later, with an unhelpful error about unpacking values.
+    # Objects without an ndim are left to the beam check below.
+    ndim = getattr(image_slice, "ndim", 2)
+    if ndim != 2:
+        raise TypeError(
+            "image_slice must be a single 2D image, such as a channel slice cube[0], "
+            f"but it has {ndim} dimensions. To convolve a full cube, use convolve_uv"
+        )
+
     # Check beams are as we expect
     try:
         beam = image_slice.beam
