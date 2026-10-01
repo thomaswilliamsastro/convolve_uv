@@ -48,6 +48,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history and tags, so setuptools_scm can work out the version. Without
+          # them the package under test is built as 0.0.1.dev1+unknown instead.
+          fetch-depth: 0
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: Install tox
@@ -98,6 +102,10 @@ jobs:
             tox-envs: lint-oldestdeps,typecheck-oldestdeps,docs-oldestdeps,wheel-oldestdeps
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history and tags, so setuptools_scm can work out the version. Without
+          # them the package under test is built as 0.0.1.dev1+unknown instead.
+          fetch-depth: 0
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: Install tox
