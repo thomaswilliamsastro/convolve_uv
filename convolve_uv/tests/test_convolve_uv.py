@@ -14,6 +14,7 @@ from astropy.wcs import WCS
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 from spectral_cube import SpectralCube, VaryingResolutionSpectralCube, cube_utils
+from spectral_cube.masks import BooleanArrayMask
 
 from .._numerics import (
     _interpolate_nans,
@@ -845,6 +846,58 @@ class TestConvolveUV:
         assert np.isnan(res[0, 10, 10]) == expected_nan
         if not expected_nan:
             assert res[0, 10, 10] == -3.0
+
+    @pytest.mark.parametrize(
+        ("nan_treatment", "masked_value"),
+        [("interpolate", np.nan), ("fill", -3.0)],
+    )
+    def test_same_beam_masked_pixels_are_treated_as_missing(self, nan_treatment, masked_value):
+        """An identical-beam image returns the valid data and treats masked pixels as NaN."""
+        cube = _create_test_cube(x_size=21, y_size=21, vel_size=1)
+        data = cube.unmasked_data[:].value.copy()
+        mask = np.ones(data.shape, dtype=bool)
+        mask[0, 5:9, 12:16] = False
+        cube = SpectralCube(
+            data=data,
+            wcs=cube.wcs,
+            beam=cube.beam,
+            mask=BooleanArrayMask(mask, cube.wcs),
+            allow_huge_operations=True,
+        )
+
+        cube_conv = convolve_uv(
+            image=cube, target_beam=cube.beam, nan_treatment=nan_treatment, fill_value=-3.0
+        )
+        res = cube_conv.unmasked_data[:].value
+
+        np.testing.assert_array_equal(res[mask], data[mask])
+        np.testing.assert_array_equal(res[~mask], np.full(np.count_nonzero(~mask), masked_value))
+        np.testing.assert_array_equal(cube_conv.mask.include(), mask)
+
+    @pytest.mark.parametrize(
+        ("nan_treatment", "expected_nan"),
+        [("interpolate", [False, False, False, True]), ("fill", [False] * 4)],
+    )
+    def test_nans_are_only_interpolated_in_channels_that_are_convolved(
+        self, nan_treatment, expected_nan
+    ):
+        """With interpolation, the channel already at the target beam keeps its NaN.
+
+        This is the documented behaviour when convolving a varying-resolution cube to its
+        common beam: that beam is the widest channel's, which needs no convolution.
+        """
+        cube = _create_test_varying_resolution_cube(x_size=31, y_size=31, vel_size=4)
+        data = np.array(cube.unmasked_data[:])
+        data[:, 10, 10] = np.nan
+        cube = VaryingResolutionSpectralCube(
+            data=data, wcs=cube.wcs, beams=cube.beams, allow_huge_operations=True
+        )
+        target_beam = cube.beams.common_beam()
+
+        res = convolve_uv(cube, target_beam, nan_treatment=nan_treatment).unmasked_data[:].value
+
+        assert [bool(b == target_beam) for b in cube.beams] == [False, False, False, True]
+        assert list(np.isnan(res[:, 10, 10])) == expected_nan
 
     def test_convolve_cube_without_mask(self):
         """Test convolution when the input cube has no mask."""
