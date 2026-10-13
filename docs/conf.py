@@ -86,3 +86,7 @@ linkcheck_ignore = [
     r"https://github\.com/thomaswilliamsastro/convolve_uv/compare/.*",
     r"https://doi\.org/10\.5281/zenodo\.\d+",
 ]
+# Check a broken link once more before failing, because servers sometimes return a one-off
+# error: GitHub answered a changelog link with 500 Internal Server Error, and the next request
+# succeeded.
+linkcheck_retries = 2
