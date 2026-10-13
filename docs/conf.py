@@ -79,4 +79,10 @@ html_theme = "sphinx_rtd_theme"
 # The changelog's compare links name the tag of the release they belong to. Cutting a release
 # changes the changelog before the tag exists, so the check on that pull request would fail on a
 # link that is correct, and can only be checked afterwards. The links follow a fixed pattern.
-linkcheck_ignore = [r"https://github\.com/thomaswilliamsastro/convolve_uv/compare/.*"]
+# Zenodo sometimes answers requests from CI runners with 403 Forbidden, so its DOI links fail the
+# check at random although they resolve. tools/check_citation.py still checks that CITATION.cff
+# and the README name the same Zenodo DOI.
+linkcheck_ignore = [
+    r"https://github\.com/thomaswilliamsastro/convolve_uv/compare/.*",
+    r"https://doi\.org/10\.5281/zenodo\.\d+",
+]
