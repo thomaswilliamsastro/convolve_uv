@@ -53,7 +53,7 @@ jobs:
           # them the package under test is built as 0.0.1.dev1+unknown instead.
           fetch-depth: 0
       - name: Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - name: Install tox
         # tox-uv must be installed alongside tox-gh: tox.ini lists it under
         # `requires`, and without it tox re-provisions itself in a fresh
@@ -112,7 +112,7 @@ jobs:
           # them the package under test is built as 0.0.1.dev1+unknown instead.
           fetch-depth: 0
       - name: Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - name: Install tox
         # tox-uv is needed because tox.ini lists it under `requires`; tox-gh is not,
         # as the environments are named explicitly below.
