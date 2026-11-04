@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Dependencies
 - Bump `actions/upload-artifact` from 7.0.1 to 7.0.2 ([#88](https://github.com/thomaswilliamsastro/convolve_uv/pull/88))
 - Bump `actions/download-artifact` from 8.0.1 to 8.0.2 ([#88](https://github.com/thomaswilliamsastro/convolve_uv/pull/88))
-- Bump `astral-sh/setup-uv` from 10.2.0 to 10.3.2 ([#88](https://github.com/thomaswilliamsastro/convolve_uv/pull/88), [#89](https://github.com/thomaswilliamsastro/convolve_uv/pull/89))
+- Bump `astral-sh/setup-uv` from 10.2.0 to 10.3.3 ([#88](https://github.com/thomaswilliamsastro/convolve_uv/pull/88), [#89](https://github.com/thomaswilliamsastro/convolve_uv/pull/89), [#90](https://github.com/thomaswilliamsastro/convolve_uv/pull/90))
 - Bump `actions/setup-python` from 7.0.0 to 7.1.0 ([#89](https://github.com/thomaswilliamsastro/convolve_uv/pull/89))
 - Bump `stefanzweifel/git-auto-commit-action` from 7.2.0 to 7.2.1 ([#89](https://github.com/thomaswilliamsastro/convolve_uv/pull/89))
 - Bump `pypa/gh-action-pypi-publish` from 1.14.2 to 1.14.3 ([#89](https://github.com/thomaswilliamsastro/convolve_uv/pull/89))
