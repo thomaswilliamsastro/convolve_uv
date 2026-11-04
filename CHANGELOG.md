@@ -12,9 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add the Zenodo DOI to `CITATION.cff` and a DOI badge to the README. The first Zenodo record was created for 0.5.0 ([10.5281/zenodo.23087281](https://doi.org/10.5281/zenodo.23087281)); the DOI used is the concept DOI for all versions, [10.5281/zenodo.23087280](https://doi.org/10.5281/zenodo.23087280), which resolves to the newest release and so does not change from release to release. The APA and BibTeX citations built from `CITATION.cff` (which GitHub's "Cite this repository" is also built from) now carry it. `tools/check_citation.py`, run by the `wheel` tox environments, checks that it is a Zenodo DOI and that the README links the same one, and `.github/RELEASING.md` no longer asks for a manual DOI step after a release ([#85](https://github.com/thomaswilliamsastro/convolve_uv/pull/85)).
 
 ### Dependencies
-
 - Bump `actions/upload-artifact` from 7.0.1 to 7.0.2 ([#88](https://github.com/thomaswilliamsastro/convolve_uv/pull/88))
 - Bump `actions/download-artifact` from 8.0.1 to 8.0.2 ([#88](https://github.com/thomaswilliamsastro/convolve_uv/pull/88))
+- Bump `astral-sh/setup-uv` from 10.2.0 to 10.3.2 ([#88](https://github.com/thomaswilliamsastro/convolve_uv/pull/88), [#89](https://github.com/thomaswilliamsastro/convolve_uv/pull/89))
+- Bump `actions/setup-python` from 7.0.0 to 7.1.0 ([#89](https://github.com/thomaswilliamsastro/convolve_uv/pull/89))
+- Bump `stefanzweifel/git-auto-commit-action` from 7.2.0 to 7.2.1 ([#89](https://github.com/thomaswilliamsastro/convolve_uv/pull/89))
+- Bump `pypa/gh-action-pypi-publish` from 1.14.2 to 1.14.3 ([#89](https://github.com/thomaswilliamsastro/convolve_uv/pull/89))
 - Bump `astral-sh/setup-uv` from 10.2.0 to 10.3.0 ([#88](https://github.com/thomaswilliamsastro/convolve_uv/pull/88))
 
 ## [0.5.0] - 2026-10-01
